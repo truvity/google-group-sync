@@ -1,0 +1,16 @@
+{
+  "packages": [
+    "go@latest",
+    "golangci-lint@latest",
+    "gopls@latest",
+    "goreleaser@latest",
+    "govulncheck@latest",
+    "just@latest",
+    "ko@latest",
+    "kubernetes-helm@latest"
+  ],
+  "shell": {
+    "init_hook": [],
+    "scripts": {}
+  }
+}
