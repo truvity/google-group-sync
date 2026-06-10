@@ -143,7 +143,12 @@ This lets the same binary run unchanged in Lambda and Kubernetes.
 ```
 google-group-sync/
 ├── cmd/
-│   ├── google-group-sync/main.go    # Entry point (bare Go main, --help/--version, signal.NotifyContext)
+│   ├── google-group-sync/           # K8s / local (existing)
+│   │   └── main.go
+│   ├── google-group-sync-lambda/    # Lambda function (NEW)
+│   │   └── main.go
+│   ├── google-group-sync-extension/ # Lambda extension (NEW)
+│   │   └── main.go
 │   └── testsetup/main.go            # Helper: store/retrieve secrets in system keyring
 ├── pkg/
 │   ├── app/
@@ -212,17 +217,46 @@ google-group-sync/
 
 ---
 
+## Multi-Binary Architecture
+
+Three entry points from the same `pkg/` core:
+
+| Entry point | Purpose | Binary name | AWS deps | Artifact |
+|-------------|---------|-------------|----------|----------|
+| `cmd/google-group-sync/` | Pure HTTP daemon (K8s, local dev) | `google-group-sync` | None | Raw binary + Docker image |
+| `cmd/google-group-sync-lambda/` | Standalone Lambda function | `bootstrap` | Optional (SM for SA key) | Lambda ZIP |
+| `cmd/google-group-sync-extension/` | Lambda extension (sidecar for other Lambdas) | `google-group-sync` | Minimal (Extensions API register) | Extension ZIP |
+
+All three share `pkg/` — same core logic, different lifecycle wrappers.
+
+**Lambda function (`cmd/google-group-sync-lambda/`):**
+- Binary named `bootstrap` (Lambda runtime requirement)
+- LWA layer handles event→HTTP translation
+- Optionally loads SA key from Secrets Manager (`SA_KEY_SECRET_NAME` env var)
+
+**Lambda extension (`cmd/google-group-sync-extension/`):**
+- Registers with Lambda Extensions API at startup (~10 lines)
+- Runs as a sidecar process inside another Lambda
+- Listens on configurable port (default 9090, different from main function's 8080)
+- Consumers attach as a Lambda Layer, then call `http://localhost:9090/groups`
+
+**K8s sidecar pattern:**
+- Use the Docker image as a sidecar container in another pod
+- Same `http://localhost:9090/groups` pattern as Lambda extension
+
+---
+
 ## Artifacts (published on release)
 
-| Artifact | Location | Architectures |
-|----------|----------|---------------|
-| Container image | `ghcr.io/truvity/google-group-sync` | linux/amd64, linux/arm64 |
-| Helm chart (OCI) | `oci://ghcr.io/truvity/charts/google-group-sync` | — |
-| Lambda ZIP | GitHub Release asset | linux/amd64, linux/arm64 |
-| Raw binaries | GitHub Release asset | linux/amd64, linux/arm64, darwin/amd64, darwin/arm64 |
-| Go module | `github.com/truvity/google-group-sync` | — |
+| Artifact | Source cmd/ | Binary | Use case |
+|----------|------------|--------|----------|
+| Raw binary (linux/darwin, amd64/arm64) | `cmd/google-group-sync/` | `google-group-sync` | Local dev, custom deployments |
+| Docker image | `cmd/google-group-sync/` | `google-group-sync` | K8s standalone or sidecar |
+| Helm chart (OCI) | — | — | K8s standalone deployment |
+| Lambda ZIP | `cmd/google-group-sync-lambda/` | `bootstrap` | Standalone Lambda with LWA |
+| Extension ZIP | `cmd/google-group-sync-extension/` | `google-group-sync` | Sidecar layer for other Lambdas |
 
-The Lambda ZIP includes the compiled binary renamed to `bootstrap` (the Lambda runtime entry point). LWA layer is added at deployment time — it is not bundled in the ZIP.
+The Lambda ZIP includes the compiled binary renamed to `bootstrap` (the Lambda runtime requirement). LWA layer is added at deployment time — it is not bundled in the ZIP.
 
 ---
 
@@ -259,6 +293,13 @@ The Lambda ZIP includes the compiled binary renamed to `bootstrap` (the Lambda r
 ### Phase 5: Documentation
 21. [ ] Update README.md with final env var reference and usage examples
 22. [ ] Tag v0.1.0
+
+### Phase 6: Multi-binary support
+23. [ ] `cmd/google-group-sync-lambda/main.go` — Lambda entry point (optional SM key loading)
+24. [ ] `cmd/google-group-sync-extension/main.go` — Extension registration + HTTP server
+25. [ ] Update `.goreleaser.yaml` — three builds (server, lambda, extension) + three archives
+26. [ ] Publish Extension ZIP as Lambda Layer in release workflow
+27. [ ] Update Pulumi example to show extension usage
 
 ---
 
