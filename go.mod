@@ -1,6 +1,6 @@
 module github.com/truvity/google-group-sync
 
-go 1.25.8
+go 1.26.4
 
 require (
 	github.com/gofiber/fiber/v3 v3.3.0

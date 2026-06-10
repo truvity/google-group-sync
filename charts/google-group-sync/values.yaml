@@ -1,0 +1,42 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/truvity/google-group-sync
+  tag: ""  # defaults to chart appVersion
+  pullPolicy: IfNotPresent
+
+env:
+  GOOGLE_ADMIN_EMAIL: ""
+  # GOOGLE_SA_KEY_FILE: /etc/secrets/sa-key.json
+  PORT: "8080"
+  HEALTH_PORT: "7070"
+  CACHE_TTL: "5m"
+  CACHE_MAX_SIZE: "10000"
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+
+# Mount a Secret as a file for the SA key.
+secrets:
+  # Name of existing Secret containing the SA key JSON.
+  saKeySecretName: ""
+  # Key within the Secret.
+  saKeySecretKey: "sa-key.json"
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  limits:
+    memory: 64Mi
+  requests:
+    cpu: 10m
+    memory: 32Mi
+
+serviceAccount:
+  create: true
+  name: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
