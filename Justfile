@@ -2,7 +2,7 @@
 
 # Build the binary
 build:
-    go build -o bin/google-group-sync ./cmd/google-group-sync/
+    go build -o bin/bootstrap ./cmd/google-group-sync/
 
 # Run tests
 test:

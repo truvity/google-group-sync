@@ -5,7 +5,7 @@ version: 2
 builds:
   - id: google-group-sync
     main: ./cmd/google-group-sync
-    binary: google-group-sync
+    binary: bootstrap
     env:
       - CGO_ENABLED=0
     goos:
@@ -21,11 +21,6 @@ archives:
   - id: lambda-zip
     formats: [zip]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    files:
-      - src: bootstrap
-        dst: .
-        info:
-          mode: 0755
 
 kos:
   - id: google-group-sync
