@@ -1,4 +1,4 @@
-module github.com/truvity/google-group-sync/deploy/example
+module github.com/truvity/google-group-sync/deploy/example-extension
 
 go 1.26.4
 

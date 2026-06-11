@@ -1,6 +1,0 @@
-name: google-group-sync-example
-runtime: go
-description: Example deployment of google-group-sync as AWS Lambda with Function URL
-config:
-  aws:region:
-    default: eu-central-1

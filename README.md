@@ -31,6 +31,18 @@ Content-Type: application/json
 Error response ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details):
 
 ```
+HTTP/1.1 400 Bad Request
+Content-Type: application/problem+json
+
+{
+  "type": "https://github.com/truvity/google-group-sync/problems/invalid-member-key",
+  "title": "Invalid Member Key",
+  "status": 400,
+  "detail": "memberKey \"not-an-email\" is not a valid email address"
+}
+```
+
+```
 HTTP/1.1 502 Bad Gateway
 Content-Type: application/problem+json
 
@@ -56,45 +68,29 @@ GET /health → 200 OK
                                        └─ domain-wide delegation (service account + impersonation)
 ```
 
-## Configuration
+## Deployment Modes
 
-All configuration is via environment variables. No config files, no CLI flags beyond `--help` and `--version`.
+google-group-sync ships three binaries for three deployment scenarios:
 
-| Env var | Required | Default | Description |
-|---------|----------|---------|-------------|
-| `GOOGLE_ADMIN_EMAIL` | Yes | — | Admin email for domain-wide delegation |
-| `GOOGLE_SA_KEY_JSON` | Mutual excl. | — | Raw SA key JSON (Lambda / env-based) |
-| `GOOGLE_SA_KEY_FILE` | Mutual excl. | — | Path to SA key file (K8s mounted Secret) |
-| `PORT` | No | `8080` | HTTP server port |
-| `HEALTH_PORT` | No | `7070` | Health probe port (separate listener) |
-| `CACHE_TTL` | No | `5m` | Group membership cache TTL (Go duration) |
-| `CACHE_MAX_SIZE` | No | `10000` | Max cache entries (LRU eviction) |
-| `LOG_LEVEL` | No | `info` | Log level: debug, info, warn, error |
-| `LOG_FORMAT` | No | `json` | Log format: json, text |
+| Mode | Binary | Entry point | Use case |
+|------|--------|-------------|----------|
+| **Standalone** | `google-group-sync` | `cmd/google-group-sync/` | K8s Deployment, local dev, any long-running process |
+| **Lambda** | `bootstrap` | `cmd/google-group-sync-lambda/` | Standalone AWS Lambda with LWA layer |
+| **Extension** | `google-group-sync` | `cmd/google-group-sync-extension/` | Lambda Extension sidecar for other Lambdas |
 
-**SA key loading:**
-- `GOOGLE_SA_KEY_JSON` set → use directly (Lambda: inline or from Secrets Manager)
-- `GOOGLE_SA_KEY_FILE` set → read from file at startup (K8s: mounted Secret volume)
-- Both set → error (mutually exclusive)
-- Neither set → error at startup
+All three modes run the same HTTP server with the same API. The difference is lifecycle management and configuration prefix.
 
-## Authentication
+### Mode 1: Standalone (K8s / local)
 
-The binary itself performs **no authentication**. Auth is delegated to the platform layer:
-
-| Platform | Auth mechanism |
-|----------|---------------|
-| AWS Lambda | Function URL with `AWS_IAM` auth type — caller must have `lambda:InvokeFunctionUrl` permission |
-| Kubernetes | NetworkPolicy + service mesh — only authorized pods can reach the service |
-| API Gateway | Cognito authorizer, IAM auth, or API keys at the gateway level |
-
-This keeps the binary simple and lets each deployment model use its native auth story.
-
-## Deployment
-
-### Kubernetes (Helm chart from GHCR OCI)
+The default binary. Runs as a regular HTTP server with signal handling.
 
 ```bash
+# Local development
+export GOOGLE_ADMIN_EMAIL=admin@example.com
+export GOOGLE_SA_KEY_FILE=/path/to/sa-key.json
+./google-group-sync
+
+# Kubernetes via Helm chart
 helm install google-group-sync oci://ghcr.io/truvity/charts/google-group-sync \
   --set env.GOOGLE_ADMIN_EMAIL=admin@example.com \
   --set env.GOOGLE_SA_KEY_FILE=/etc/secrets/sa-key.json \
@@ -103,26 +99,127 @@ helm install google-group-sync oci://ghcr.io/truvity/charts/google-group-sync \
 
 The chart creates a Deployment, Service, and ServiceAccount. Mount the SA key as a Kubernetes Secret volume.
 
-### AWS Lambda (ZIP from GitHub Release)
+### Mode 2: Lambda (standalone function)
 
-Download the Lambda ZIP for your architecture (arm64 recommended) from the GitHub Release assets. Deploy with the [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) (LWA) layer.
+Runs as its own Lambda function behind [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) (LWA). LWA translates Lambda invocation events into HTTP requests to `localhost:PORT`. The binary starts as a normal HTTP server — no Lambda SDK needed.
 
-**What is Lambda Web Adapter?**  
-LWA is an AWS-provided Lambda layer that translates Lambda invocation events (API Gateway, Function URL, ALB) into standard HTTP requests sent to `localhost:PORT`. The binary runs as a normal HTTP server — no Lambda SDK, no handler signature changes. LWA starts the binary, waits for the health check to pass (`GET /health`), then proxies events as HTTP. This lets the same binary run unchanged in both Lambda and Kubernetes.
+The Lambda binary optionally loads the SA key from AWS Secrets Manager at startup (via `SA_KEY_SECRET_NAME` env var), so the key doesn't need to be in Lambda environment variables.
 
 ```bash
-# Example: deploy with AWS CLI
 aws lambda create-function \
   --function-name google-group-sync \
   --runtime provided.al2023 \
   --architectures arm64 \
   --handler bootstrap \
-  --zip-file fileb://google-group-sync_v0.1.0_linux_arm64.zip \
+  --zip-file fileb://google-group-sync_lambda_v0.3.2_arm64.zip \
   --layers "arn:aws:lambda:eu-central-1:753240598075:layer:LambdaAdapterLayerArm64:24" \
-  --environment "Variables={GOOGLE_ADMIN_EMAIL=admin@example.com,GOOGLE_SA_KEY_JSON=...}"
+  --environment "Variables={GOOGLE_ADMIN_EMAIL=admin@example.com,SA_KEY_SECRET_NAME=my/sa-key}"
 ```
 
-A Pulumi example is available in `deploy/example/` showing Lambda + Function URL with AWS_IAM auth.
+A Pulumi example is available in `deploy/example-lambda/`.
+
+### Mode 3: Extension (sidecar for other Lambdas)
+
+Runs as a [Lambda Extension](https://docs.aws.amazon.com/lambda/latest/dg/lambda-extensions.html) — a sidecar process inside another Lambda's execution environment. The host Lambda calls `http://localhost:9090/groups` to resolve group memberships without needing a separate Lambda invocation.
+
+Key differences from standalone/Lambda modes:
+
+- **GGS_ prefix** — All env vars use the `GGS_` prefix to avoid collisions with the host Lambda's env vars (e.g., `GGS_GOOGLE_ADMIN_EMAIL`, `GGS_PORT`)
+- **Port 9090** — Default port avoids conflict with the host Lambda (which typically uses 8080)
+- **Health port disabled** — `GGS_HEALTH_PORT=0` by default (no separate health listener)
+- **Extensions API registration** — Registers with the Lambda Extensions API at startup, calls `/next` to signal init complete
+- **Secrets Manager** — Loads SA key from `GGS_SA_KEY_SECRET_NAME`
+
+Deploy as a Lambda Layer. The extension ZIP wraps the binary in an `extensions/` directory so Lambda places it at `/opt/extensions/google-group-sync`:
+
+```bash
+# Publish as a Layer
+aws lambda publish-layer-version \
+  --layer-name google-group-sync-extension \
+  --zip-file fileb://google-group-sync_extension_v0.3.2_arm64.zip \
+  --compatible-architectures arm64
+
+# Add to host Lambda
+aws lambda update-function-configuration \
+  --function-name my-webhook \
+  --layers "arn:aws:lambda:...:layer:google-group-sync-extension:1" \
+  --environment "Variables={...,GGS_GOOGLE_ADMIN_EMAIL=admin@example.com,GGS_SA_KEY_SECRET_NAME=my/sa-key}"
+```
+
+The host Lambda then calls `http://localhost:9090/groups` with a JSON body.
+
+## Configuration
+
+All configuration is via environment variables. No config files, no CLI flags beyond `--help` and `--version`.
+
+### Standalone / Lambda mode
+
+| Env var | Required | Default | Description |
+|---------|----------|---------|-------------|
+| `GOOGLE_ADMIN_EMAIL` | Yes | — | Admin email for domain-wide delegation |
+| `GOOGLE_SA_KEY_JSON` | Mutual excl. | — | Raw SA key JSON (Lambda / env-based) |
+| `GOOGLE_SA_KEY_FILE` | Mutual excl. | — | Path to SA key file (K8s mounted Secret) |
+| `SA_KEY_SECRET_NAME` | No | — | AWS Secrets Manager secret name (Lambda only) |
+| `PORT` | No | `8080` | HTTP server port |
+| `HEALTH_PORT` | No | `7070` | Health probe port (separate listener) |
+| `CACHE_TTL` | No | `5m` | Group membership cache TTL (Go duration) |
+| `CACHE_MAX_SIZE` | No | `10000` | Max cache entries (LRU eviction) |
+| `LOG_LEVEL` | No | `info` | Log level: debug, info, warn, error |
+| `LOG_FORMAT` | No | `json` | Log format: json, text |
+
+### Extension mode (GGS_ prefix)
+
+All env vars use the `GGS_` prefix. The host Lambda's unprefixed vars are ignored.
+
+| Env var | Required | Default | Description |
+|---------|----------|---------|-------------|
+| `GGS_GOOGLE_ADMIN_EMAIL` | Yes | — | Admin email for domain-wide delegation |
+| `GGS_GOOGLE_SA_KEY_JSON` | Mutual excl. | — | Raw SA key JSON |
+| `GGS_GOOGLE_SA_KEY_FILE` | Mutual excl. | — | Path to SA key file |
+| `GGS_SA_KEY_SECRET_NAME` | No | — | AWS Secrets Manager secret name |
+| `GGS_PORT` | No | `9090` | HTTP server port |
+| `GGS_HEALTH_PORT` | No | `0` | Health probe port (0 = disabled) |
+| `GGS_CACHE_TTL` | No | `5m` | Group membership cache TTL |
+| `GGS_CACHE_MAX_SIZE` | No | `10000` | Max cache entries |
+| `GGS_LOG_LEVEL` | No | `info` | Log level |
+| `GGS_LOG_FORMAT` | No | `json` | Log format |
+
+### SA key loading priority
+
+1. `*_GOOGLE_SA_KEY_JSON` set → use directly
+2. `*_SA_KEY_SECRET_NAME` set → load from Secrets Manager at startup, set `*_GOOGLE_SA_KEY_JSON`
+3. `*_GOOGLE_SA_KEY_FILE` set → read from file at startup
+4. None set → error at startup
+
+`GOOGLE_SA_KEY_JSON` and `GOOGLE_SA_KEY_FILE` are mutually exclusive (error if both set).
+
+## Authentication
+
+The binary itself performs **no authentication**. Auth is delegated to the platform layer:
+
+| Platform | Auth mechanism |
+|----------|---------------|
+| AWS Lambda | Function URL with `AWS_IAM` auth type — caller must have `lambda:InvokeFunctionUrl` permission |
+| Lambda Extension | Localhost-only (no network auth needed — same execution environment) |
+| Kubernetes | NetworkPolicy + service mesh — only authorized pods can reach the service |
+| API Gateway | Cognito authorizer, IAM auth, or API keys at the gateway level |
+
+This keeps the binary simple and lets each deployment model use its native auth story.
+
+## Artifacts
+
+Each GitHub Release publishes:
+
+| Artifact | Format | Architecture | Description |
+|----------|--------|--------------|-------------|
+| `google-group-sync_<version>_linux_amd64.tar.gz` | tar.gz | amd64 | Standalone binary (Linux) |
+| `google-group-sync_<version>_linux_arm64.tar.gz` | tar.gz | arm64 | Standalone binary (Linux) |
+| `google-group-sync_<version>_darwin_amd64.tar.gz` | tar.gz | amd64 | Standalone binary (macOS) |
+| `google-group-sync_<version>_darwin_arm64.tar.gz` | tar.gz | arm64 | Standalone binary (macOS) |
+| `google-group-sync_lambda_<version>_arm64.zip` | zip | arm64 | Lambda ZIP (bootstrap binary) |
+| `google-group-sync_extension_<version>_arm64.zip` | zip | arm64 | Extension ZIP (Layer) |
+| `ghcr.io/truvity/google-group-sync:<version>` | OCI | multi-arch | Container image (distroless) |
+| `oci://ghcr.io/truvity/charts/google-group-sync` | Helm | — | Helm chart |
 
 ## Development
 

@@ -1,0 +1,6 @@
+name: google-group-sync-lambda
+runtime: go
+description: Deploy google-group-sync as a standalone AWS Lambda with Function URL
+config:
+  aws:region:
+    default: eu-central-1

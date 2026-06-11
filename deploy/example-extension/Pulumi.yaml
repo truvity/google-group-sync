@@ -1,0 +1,6 @@
+name: google-group-sync-extension
+runtime: go
+description: Deploy google-group-sync as a Lambda Extension (sidecar for another Lambda)
+config:
+  aws:region:
+    default: eu-central-1
