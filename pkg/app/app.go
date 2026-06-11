@@ -15,8 +15,15 @@ import (
 
 // Run initializes all components and starts the HTTP server.
 // It blocks until the context is canceled (signal received).
+// Uses DefaultConfig with no prefix (standalone/Lambda mode).
 func Run(ctx context.Context) error {
-	cfg, err := config.Load()
+	defaults := config.DefaultConfig()
+	return RunWithOptions(ctx, &defaults, config.Options{})
+}
+
+// RunWithOptions initializes all components with the given config defaults and options.
+func RunWithOptions(ctx context.Context, defaults *config.Config, opts config.Options) error {
+	cfg, err := config.Load(defaults, opts)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}

@@ -4,73 +4,90 @@ package config
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"time"
+
+	"github.com/caarlos0/env/v11"
 )
 
 // Config holds all service configuration loaded from environment variables.
 type Config struct {
 	// Google Workspace settings.
-	GoogleAdminEmail string
-	GoogleSAKeyJSON  string // Raw SA key JSON (mutual exclusive with SAKeyFile).
-	GoogleSAKeyFile  string // Path to SA key file (mutual exclusive with SAKeyJSON).
+	GoogleAdminEmail string `env:"GOOGLE_ADMIN_EMAIL"`
+	GoogleSAKeyJSON  string `env:"GOOGLE_SA_KEY_JSON"`
+	GoogleSAKeyFile  string `env:"GOOGLE_SA_KEY_FILE"`
+
+	// Secrets Manager (Lambda: load SA key at startup).
+	SAKeySecretName string `env:"SA_KEY_SECRET_NAME"`
 
 	// Server settings.
-	Port       int
-	HealthPort int
+	Port       int `env:"PORT"`
+	HealthPort int `env:"HEALTH_PORT"`
 
 	// Cache settings.
-	CacheTTL     time.Duration
-	CacheMaxSize int
+	CacheTTL     time.Duration `env:"CACHE_TTL"`
+	CacheMaxSize int           `env:"CACHE_MAX_SIZE"`
 
 	// Logging.
-	LogLevel  string
-	LogFormat string
+	LogLevel  string `env:"LOG_LEVEL"`
+	LogFormat string `env:"LOG_FORMAT"`
 }
 
-// Load reads configuration from environment variables and validates it.
-func Load() (*Config, error) {
-	cfg := &Config{
-		GoogleAdminEmail: os.Getenv("GOOGLE_ADMIN_EMAIL"),
-		GoogleSAKeyJSON:  os.Getenv("GOOGLE_SA_KEY_JSON"),
-		GoogleSAKeyFile:  os.Getenv("GOOGLE_SA_KEY_FILE"),
-		LogLevel:         envOrDefault("LOG_LEVEL", "info"),
-		LogFormat:        envOrDefault("LOG_FORMAT", "json"),
+// Options controls how config is loaded. Different entry points pass different options.
+type Options struct {
+	// Prefix for env var names (e.g., "GGS_" reads GGS_PORT instead of PORT).
+	Prefix string
+}
+
+// DefaultConfig returns the standard defaults shared by all entry points.
+func DefaultConfig() Config {
+	return Config{
+		Port:         8080,
+		HealthPort:   7070,
+		CacheTTL:     5 * time.Minute,
+		CacheMaxSize: 10000,
+		LogLevel:     "info",
+		LogFormat:    "json",
+	}
+}
+
+// ExtensionDefaults returns defaults for the Lambda Extension entry point.
+// Port 9090 (avoids conflict with host Lambda), health disabled.
+func ExtensionDefaults() Config {
+	cfg := DefaultConfig()
+	cfg.Port = 9090
+	cfg.HealthPort = 0
+	return cfg
+}
+
+// Load reads configuration from environment variables with the given options.
+// The config starts from the provided defaults, then env vars override.
+func Load(defaults *Config, opts Options) (*Config, error) {
+	cfg := *defaults
+
+	envOpts := env.Options{}
+	if opts.Prefix != "" {
+		envOpts.Prefix = opts.Prefix
 	}
 
-	var err error
-
-	cfg.Port, err = envIntOrDefault("PORT", 8080)
-	if err != nil {
-		return nil, fmt.Errorf("invalid PORT: %w", err)
-	}
-
-	cfg.HealthPort, err = envIntOrDefault("HEALTH_PORT", 7070)
-	if err != nil {
-		return nil, fmt.Errorf("invalid HEALTH_PORT: %w", err)
-	}
-
-	cfg.CacheTTL, err = envDurationOrDefault("CACHE_TTL", 5*time.Minute)
-	if err != nil {
-		return nil, fmt.Errorf("invalid CACHE_TTL: %w", err)
-	}
-
-	cfg.CacheMaxSize, err = envIntOrDefault("CACHE_MAX_SIZE", 10000)
-	if err != nil {
-		return nil, fmt.Errorf("invalid CACHE_MAX_SIZE: %w", err)
+	if err := env.ParseWithOptions(&cfg, envOpts); err != nil {
+		return nil, fmt.Errorf("parse env: %w", err)
 	}
 
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
 
-	return cfg, nil
+	return &cfg, nil
 }
 
 // SAKeyJSON returns the SA key JSON content, reading from file if necessary.
 func (c *Config) SAKeyJSON() ([]byte, error) {
 	if c.GoogleSAKeyJSON != "" {
 		return []byte(c.GoogleSAKeyJSON), nil
+	}
+
+	if c.GoogleSAKeyFile == "" {
+		return nil, fmt.Errorf("neither GOOGLE_SA_KEY_JSON nor GOOGLE_SA_KEY_FILE is set")
 	}
 
 	data, err := os.ReadFile(c.GoogleSAKeyFile)
@@ -95,40 +112,4 @@ func (c *Config) validate() error {
 	}
 
 	return nil
-}
-
-func envOrDefault(key, defaultVal string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-
-	return defaultVal
-}
-
-func envIntOrDefault(key string, defaultVal int) (int, error) {
-	v := os.Getenv(key)
-	if v == "" {
-		return defaultVal, nil
-	}
-
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return 0, fmt.Errorf("parse %q=%q: %w", key, v, err)
-	}
-
-	return n, nil
-}
-
-func envDurationOrDefault(key string, defaultVal time.Duration) (time.Duration, error) {
-	v := os.Getenv(key)
-	if v == "" {
-		return defaultVal, nil
-	}
-
-	d, err := time.ParseDuration(v)
-	if err != nil {
-		return 0, fmt.Errorf("parse %q=%q: %w", key, v, err)
-	}
-
-	return d, nil
 }

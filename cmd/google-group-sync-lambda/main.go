@@ -31,7 +31,7 @@ func main() {
 	// Optionally load SA key from Secrets Manager before starting the app.
 	if err := loadSAKeyFromSecretsManager(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "error: load SA key from Secrets Manager: %v\n", err)
-		os.Exit(1) //nolint:gocritic // cancel() deferred but process terminates — acceptable
+		os.Exit(1) //nolint:gocritic // process terminates
 	}
 
 	if err := app.Run(ctx); err != nil {
@@ -42,14 +42,12 @@ func main() {
 }
 
 // loadSAKeyFromSecretsManager loads the SA key from Secrets Manager if SA_KEY_SECRET_NAME is set.
-// It sets GOOGLE_SA_KEY_JSON env var so the config package picks it up.
 func loadSAKeyFromSecretsManager(ctx context.Context) error {
 	secretName := os.Getenv("SA_KEY_SECRET_NAME")
 	if secretName == "" {
-		return nil // No secret name configured — SA key comes from env directly.
+		return nil
 	}
 
-	// Skip if GOOGLE_SA_KEY_JSON is already set (explicit env takes precedence).
 	if os.Getenv("GOOGLE_SA_KEY_JSON") != "" {
 		return nil
 	}
@@ -74,10 +72,9 @@ func loadSAKeyFromSecretsManager(ctx context.Context) error {
 	if out.SecretString != nil {
 		secretValue = *out.SecretString
 	} else {
-		return fmt.Errorf("secret %q has no string value (binary secrets not supported)", secretName)
+		return fmt.Errorf("secret %q has no string value", secretName)
 	}
 
-	// Validate it looks like JSON before setting.
 	if !json.Valid([]byte(secretValue)) {
 		return fmt.Errorf("secret %q value is not valid JSON", secretName)
 	}
