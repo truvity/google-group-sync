@@ -3,9 +3,10 @@ project_name: google-group-sync
 version: 2
 
 builds:
+  # K8s/local binary (used standalone or as K8s sidecar).
   - id: google-group-sync
     main: ./cmd/google-group-sync
-    binary: bootstrap
+    binary: google-group-sync
     env:
       - CGO_ENABLED=0
     goos:
@@ -17,10 +18,54 @@ builds:
     ldflags:
       - -s -w -X main.Version={{.Version}}
 
+  # Lambda function binary (named bootstrap — Lambda runtime requirement).
+  - id: google-group-sync-lambda
+    main: ./cmd/google-group-sync-lambda
+    binary: bootstrap
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - arm64
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
+  # Lambda extension binary (sidecar for other Lambdas).
+  - id: google-group-sync-extension
+    main: ./cmd/google-group-sync-extension
+    binary: google-group-sync
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - arm64
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
 archives:
-  - id: lambda-zip
-    formats: [zip]
+  # Raw binary archive (for manual installs / custom deployments).
+  - id: binary
+    builds:
+      - google-group-sync
+    formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+  # Lambda function ZIP (binary named bootstrap — standalone Lambda with LWA).
+  - id: lambda-zip
+    builds:
+      - google-group-sync-lambda
+    formats: [zip]
+    name_template: "{{ .ProjectName }}_lambda_{{ .Version }}_{{ .Arch }}"
+
+  # Extension ZIP (Lambda Layer — binary goes to extensions/ so it lands at /opt/extensions/).
+  - id: extension-zip
+    builds:
+      - google-group-sync-extension
+    formats: [zip]
+    name_template: "{{ .ProjectName }}_extension_{{ .Version }}_{{ .Arch }}"
+    wrap_in_directory: extensions
 
 kos:
   - id: google-group-sync
