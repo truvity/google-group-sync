@@ -66,6 +66,8 @@ archives:
     formats: [zip]
     name_template: "{{ .ProjectName }}_extension_{{ .Version }}_{{ .Arch }}"
     wrap_in_directory: extensions
+    files:
+      - none*
 
 kos:
   - id: google-group-sync
