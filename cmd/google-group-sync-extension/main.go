@@ -39,7 +39,7 @@ var envMapping = []struct {
 	defaultValue string
 }{
 	{"GGS_PORT", "PORT", "9090"},
-	{"GGS_HEALTH_PORT", "HEALTH_PORT", "7070"},
+	{"GGS_HEALTH_PORT", "HEALTH_PORT", "0"},
 	{"GGS_GOOGLE_ADMIN_EMAIL", "GOOGLE_ADMIN_EMAIL", ""},
 	{"GGS_GOOGLE_SA_KEY_JSON", "GOOGLE_SA_KEY_JSON", ""},
 	{"GGS_GOOGLE_SA_KEY_FILE", "GOOGLE_SA_KEY_FILE", ""},

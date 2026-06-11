@@ -37,17 +37,22 @@ func Run(ctx context.Context, logger *slog.Logger, cfg Config, res resolver.Grou
 	})
 
 	// Health probe on separate port (for Lambda Web Adapter readiness check).
-	healthApp := fiber.New()
-	healthApp.Get("/health", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	// Skip if port is 0 (extension mode — no health check needed).
+	if cfg.HealthPort > 0 {
+		healthApp := fiber.New()
+		healthApp.Get("/health", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
 
-	go func() {
-		addr := fmt.Sprintf(":%d", cfg.HealthPort)
-		if err := healthApp.Listen(addr); err != nil {
-			logger.ErrorContext(ctx, "health server error", slog.Any("error", err))
-		}
-	}()
+		go func() {
+			addr := fmt.Sprintf(":%d", cfg.HealthPort)
+			if err := healthApp.Listen(addr); err != nil {
+				logger.ErrorContext(ctx, "health server error", slog.Any("error", err))
+			}
+		}()
+
+		defer func() { _ = healthApp.ShutdownWithTimeout(1 * time.Second) }()
+	}
 
 	// Start main server in background.
 	go func() {
@@ -66,8 +71,6 @@ func Run(ctx context.Context, logger *slog.Logger, cfg Config, res resolver.Grou
 	if err := app.ShutdownWithTimeout(5 * time.Second); err != nil {
 		return fmt.Errorf("shutdown: %w", err)
 	}
-
-	_ = healthApp.ShutdownWithTimeout(1 * time.Second)
 
 	return nil
 }
