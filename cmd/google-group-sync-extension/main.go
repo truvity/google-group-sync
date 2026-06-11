@@ -90,6 +90,30 @@ func registerExtension(ctx context.Context, logger *slog.Logger) error {
 	extensionID := resp.Header.Get("Lambda-Extension-Identifier")
 	logger.InfoContext(ctx, "extension registered", slog.String("extension_id", extensionID))
 
+	// Start /next polling loop in background.
+	// This signals to Lambda that the extension's init is complete.
+	// The call blocks until SHUTDOWN (which we don't subscribe to, so it blocks forever
+	// until the execution environment is recycled).
+	go func() {
+		nextURL := fmt.Sprintf("http://%s/2020-01-01/extension/event/next", runtimeAPI)
+
+		for {
+			nextReq, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL, http.NoBody) //nolint:gosec // trusted URL
+			if err != nil {
+				return
+			}
+
+			nextReq.Header.Set("Lambda-Extension-Identifier", extensionID)
+
+			nextResp, err := http.DefaultClient.Do(nextReq) //nolint:gosec // trusted URL
+			if err != nil {
+				return // context canceled or environment shutting down
+			}
+
+			_ = nextResp.Body.Close()
+		}
+	}()
+
 	return nil
 }
 
