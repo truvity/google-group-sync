@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/truvity/google-group-sync/pkg/app"
@@ -60,13 +61,17 @@ func registerExtension(ctx context.Context, logger *slog.Logger) error {
 
 	registerURL := fmt.Sprintf("http://%s/2020-01-01/extension/register", runtimeAPI)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, registerURL, http.NoBody) //nolint:gosec // URL built from trusted Lambda runtime env var
+	// Extensions API requires a JSON body with events array (empty = no lifecycle subscriptions).
+	registerBody := strings.NewReader(`{"events":[]}`)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, registerURL, registerBody) //nolint:gosec // URL built from trusted Lambda runtime env var
 	if err != nil {
 		return fmt.Errorf("create register request: %w", err)
 	}
 
 	// The extension name must match the binary filename in /opt/extensions/.
 	req.Header.Set("Lambda-Extension-Name", "google-group-sync")
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req) //nolint:gosec // req is constructed above with trusted URL
 	if err != nil {
