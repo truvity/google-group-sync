@@ -6,6 +6,26 @@ This Pulumi program deploys google-group-sync as an AWS Lambda function with:
 - Function URL with AWS_IAM authentication
 - CloudWatch Logs (JSON format, 7-day retention)
 
+## Extension Mode (Lambda Layer)
+
+When deployed as a Lambda Extension (sidecar for another Lambda), all configuration
+env vars use the `GGS_` prefix to avoid collisions with the host Lambda:
+
+| Extension env var       | Standard equivalent    | Default |
+|-------------------------|------------------------|---------|
+| `GGS_PORT`             | `PORT`                 | `9090`  |
+| `GGS_HEALTH_PORT`     | `HEALTH_PORT`          | `7070`  |
+| `GGS_GOOGLE_ADMIN_EMAIL` | `GOOGLE_ADMIN_EMAIL` | —       |
+| `GGS_SA_KEY_SECRET_NAME` | `SA_KEY_SECRET_NAME` | —       |
+| `GGS_GOOGLE_SA_KEY_JSON` | `GOOGLE_SA_KEY_JSON` | —       |
+| `GGS_GOOGLE_SA_KEY_FILE` | `GOOGLE_SA_KEY_FILE` | —       |
+| `GGS_CACHE_TTL`       | `CACHE_TTL`            | `5m`    |
+| `GGS_CACHE_MAX_SIZE`  | `CACHE_MAX_SIZE`       | `10000` |
+| `GGS_LOG_LEVEL`       | `LOG_LEVEL`            | `info`  |
+| `GGS_LOG_FORMAT`      | `LOG_FORMAT`           | `json`  |
+
+The host Lambda calls `http://localhost:9090/groups` to resolve groups.
+
 ## Prerequisites
 
 - AWS credentials configured (`aws configure` or environment variables)

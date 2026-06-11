@@ -1,10 +1,16 @@
 // Package main is the Lambda Extension entry point for google-group-sync.
 // It registers with the Lambda Extensions API, then runs the HTTP server as a sidecar.
 // Other Lambda functions include this as a Layer and call http://localhost:9090/groups.
+//
+// All configuration env vars use the GGS_ prefix to avoid collisions with the host
+// Lambda's env vars (e.g., GGS_PORT instead of PORT, GGS_GOOGLE_ADMIN_EMAIL instead
+// of GOOGLE_ADMIN_EMAIL). The extension maps these to the standard names before
+// starting the app.
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -25,6 +31,25 @@ var (
 	Version = "dev"
 )
 
+// envMapping defines the GGS_ prefixed env vars and their standard equivalents.
+// The extension reads GGS_* and sets the standard names for pkg/config to consume.
+var envMapping = []struct {
+	ggsName      string
+	standardName string
+	defaultValue string
+}{
+	{"GGS_PORT", "PORT", "9090"},
+	{"GGS_HEALTH_PORT", "HEALTH_PORT", "7070"},
+	{"GGS_GOOGLE_ADMIN_EMAIL", "GOOGLE_ADMIN_EMAIL", ""},
+	{"GGS_GOOGLE_SA_KEY_JSON", "GOOGLE_SA_KEY_JSON", ""},
+	{"GGS_GOOGLE_SA_KEY_FILE", "GOOGLE_SA_KEY_FILE", ""},
+	{"GGS_SA_KEY_SECRET_NAME", "SA_KEY_SECRET_NAME", ""},
+	{"GGS_CACHE_TTL", "CACHE_TTL", ""},
+	{"GGS_CACHE_MAX_SIZE", "CACHE_MAX_SIZE", ""},
+	{"GGS_LOG_LEVEL", "LOG_LEVEL", ""},
+	{"GGS_LOG_FORMAT", "LOG_FORMAT", ""},
+}
+
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
@@ -37,13 +62,8 @@ func main() {
 		os.Exit(1) //nolint:gocritic // cancel() called by os.Exit doesn't matter here — process terminates
 	}
 
-	// Set default port to 9090 if not configured (different from main function's 8080).
-	if os.Getenv("PORT") == "" {
-		if err := os.Setenv("PORT", "9090"); err != nil {
-			logger.ErrorContext(ctx, "failed to set PORT", slog.Any("error", err))
-			os.Exit(1)
-		}
-	}
+	// Map GGS_ prefixed env vars to standard names for pkg/config.
+	mapEnvVars()
 
 	// Optionally load SA key from Secrets Manager before starting the app.
 	if err := loadSAKeyFromSecretsManager(ctx); err != nil {
@@ -56,6 +76,19 @@ func main() {
 		cancel()
 		logger.ErrorContext(ctx, "app error", slog.Any("error", err))
 		os.Exit(1)
+	}
+}
+
+// mapEnvVars reads GGS_* env vars and sets the corresponding standard names.
+// If a GGS_ var is set, it overrides the standard name. If neither is set,
+// the default value is applied (if non-empty).
+func mapEnvVars() {
+	for _, m := range envMapping {
+		if v := os.Getenv(m.ggsName); v != "" {
+			_ = os.Setenv(m.standardName, v)
+		} else if os.Getenv(m.standardName) == "" && m.defaultValue != "" {
+			_ = os.Setenv(m.standardName, m.defaultValue)
+		}
 	}
 }
 
@@ -133,6 +166,11 @@ func loadSAKeyFromSecretsManager(ctx context.Context) error {
 		secretValue = *out.SecretString
 	} else {
 		return fmt.Errorf("secret %q has no string value (binary secrets not supported)", secretName)
+	}
+
+	// Validate it looks like JSON before setting.
+	if !json.Valid([]byte(secretValue)) {
+		return fmt.Errorf("secret %q value is not valid JSON", secretName)
 	}
 
 	if err := os.Setenv("GOOGLE_SA_KEY_JSON", secretValue); err != nil {
