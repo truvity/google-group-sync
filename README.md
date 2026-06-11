@@ -111,7 +111,7 @@ aws lambda create-function \
   --runtime provided.al2023 \
   --architectures arm64 \
   --handler bootstrap \
-  --zip-file fileb://google-group-sync_lambda_v0.3.2_arm64.zip \
+  --zip-file fileb://google-group-sync_lambda_v0.4.0_arm64.zip \
   --layers "arn:aws:lambda:eu-central-1:753240598075:layer:LambdaAdapterLayerArm64:24" \
   --environment "Variables={GOOGLE_ADMIN_EMAIL=admin@example.com,SA_KEY_SECRET_NAME=my/sa-key}"
 ```
@@ -136,7 +136,7 @@ Deploy as a Lambda Layer. The extension ZIP wraps the binary in an `extensions/`
 # Publish as a Layer
 aws lambda publish-layer-version \
   --layer-name google-group-sync-extension \
-  --zip-file fileb://google-group-sync_extension_v0.3.2_arm64.zip \
+  --zip-file fileb://google-group-sync_extension_v0.4.0_arm64.zip \
   --compatible-architectures arm64
 
 # Add to host Lambda
