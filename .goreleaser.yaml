@@ -47,21 +47,21 @@ builds:
 archives:
   # Raw binary archive (for manual installs / custom deployments).
   - id: binary
-    builds:
+    ids:
       - google-group-sync
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
   # Lambda function ZIP (binary named bootstrap — standalone Lambda with LWA).
   - id: lambda-zip
-    builds:
+    ids:
       - google-group-sync-lambda
     formats: [zip]
     name_template: "{{ .ProjectName }}_lambda_{{ .Version }}_{{ .Arch }}"
 
   # Extension ZIP (Lambda Layer — binary goes to extensions/ so it lands at /opt/extensions/).
   - id: extension-zip
-    builds:
+    ids:
       - google-group-sync-extension
     formats: [zip]
     name_template: "{{ .ProjectName }}_extension_{{ .Version }}_{{ .Arch }}"
