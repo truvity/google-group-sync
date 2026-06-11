@@ -2,7 +2,10 @@
 package server
 
 import (
+	"errors"
+
 	"github.com/gofiber/fiber/v3"
+	"google.golang.org/api/googleapi"
 )
 
 // Problem represents an RFC 9457 Problem Details response.
@@ -39,4 +42,14 @@ func sendProblem(c fiber.Ctx, p *Problem) error {
 	c.Set("Content-Type", "application/problem+json")
 
 	return c.Status(p.Status).JSON(p)
+}
+
+// isGoogleClientError returns true if the error wraps a Google API error with a 4xx status code.
+func isGoogleClientError(err error) bool {
+	var apiErr *googleapi.Error
+	if errors.As(err, &apiErr) {
+		return apiErr.Code >= 400 && apiErr.Code < 500
+	}
+
+	return false
 }

@@ -53,6 +53,12 @@ func NewGroupsHandler(logger *slog.Logger, res resolver.GroupResolver, c *cache.
 				slog.Any("error", err),
 			)
 
+			// If Google returned a 4xx (e.g., 400 Invalid Input for non-email memberKey),
+			// propagate as 400 — the caller sent a bad email.
+			if isGoogleClientError(err) {
+				return sendProblem(ctx, problemBadRequest("invalid email: "+err.Error()))
+			}
+
 			return sendProblem(ctx, problemGoogleAPIError(err.Error()))
 		}
 
