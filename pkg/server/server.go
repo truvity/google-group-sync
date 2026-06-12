@@ -37,6 +37,8 @@ func Run(ctx context.Context, logger *slog.Logger, cfg Config, res resolver.Grou
 	})
 
 	// Health probe on separate port (for Lambda Web Adapter readiness check).
+	listenCfg := fiber.ListenConfig{DisableStartupMessage: true}
+
 	// Skip if port is 0 (extension mode — no health check needed).
 	if cfg.HealthPort > 0 {
 		healthApp := fiber.New()
@@ -46,7 +48,7 @@ func Run(ctx context.Context, logger *slog.Logger, cfg Config, res resolver.Grou
 
 		go func() {
 			addr := fmt.Sprintf(":%d", cfg.HealthPort)
-			if err := healthApp.Listen(addr); err != nil {
+			if err := healthApp.Listen(addr, listenCfg); err != nil {
 				logger.ErrorContext(ctx, "health server error", slog.Any("error", err))
 			}
 		}()
@@ -59,7 +61,7 @@ func Run(ctx context.Context, logger *slog.Logger, cfg Config, res resolver.Grou
 		addr := fmt.Sprintf(":%d", cfg.Port)
 		logger.InfoContext(ctx, "listening", slog.String("addr", addr))
 
-		if err := app.Listen(addr); err != nil {
+		if err := app.Listen(addr, listenCfg); err != nil {
 			logger.ErrorContext(ctx, "server error", slog.Any("error", err))
 		}
 	}()
