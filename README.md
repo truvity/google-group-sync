@@ -232,6 +232,23 @@ just test-integration     # run integration tests (requires real Google SA key)
 just snapshot             # build snapshot release locally
 ```
 
+### Integration Test Setup
+
+```bash
+# Store Google SA key in system keyring
+secret-tool store --label='google-group-sync sa-key' \
+  service google-group-sync username sa-key < /path/to/sa-key.json
+
+# Delete the key file after storing (don't leave secrets on disk)
+rm /path/to/sa-key.json
+
+# Verify it's stored correctly
+secret-tool lookup service google-group-sync username sa-key | head -c 20
+
+# Create config (~/.config/google-group-sync/config.yaml)
+# See tests/integration/main_test.go for required fields
+```
+
 ## Related repos
 
 - [truvity/zitadel-rbac-mapper](https://github.com/truvity/zitadel-rbac-mapper) — consumes this service for group-based RBAC in Zitadel
