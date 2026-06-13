@@ -4,6 +4,9 @@
 //
 // Prerequisites:
 //   - Google SA key stored in system keyring: service="google-group-sync", key="sa-key"
+//     Store:  secret-tool store --label='google-group-sync sa-key' service google-group-sync username sa-key < /path/to/sa-key.json
+//     Clean:  rm /path/to/sa-key.json  # delete the key file after storing to keyring
+//     Verify: secret-tool lookup service google-group-sync username sa-key | head -c 20
 //   - Config file at ~/.config/google-group-sync/config.yaml with domain, adminEmail, customerId
 //   - Real Google Workspace with at least one user who belongs to at least one group
 //
