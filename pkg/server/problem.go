@@ -38,6 +38,15 @@ func problemGoogleAPIError(detail string) *Problem {
 	}
 }
 
+func problemNotFound(detail string) *Problem {
+	return &Problem{
+		Type:   problemBaseURL + "/not-found",
+		Title:  "Not Found",
+		Status: fiber.StatusNotFound,
+		Detail: detail,
+	}
+}
+
 func sendProblem(c fiber.Ctx, p *Problem) error {
 	c.Set("Content-Type", "application/problem+json")
 

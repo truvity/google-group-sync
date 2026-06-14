@@ -9,7 +9,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 	slogfiber "github.com/samber/slog-fiber"
 
-	"github.com/truvity/google-group-sync/pkg/cache"
 	"github.com/truvity/google-group-sync/pkg/resolver"
 )
 
@@ -20,7 +19,7 @@ type Config struct {
 }
 
 // Run starts the HTTP server and blocks until the context is canceled.
-func Run(ctx context.Context, logger *slog.Logger, cfg Config, res resolver.GroupResolver, groupCache *cache.Cache) error {
+func Run(ctx context.Context, logger *slog.Logger, cfg Config, res resolver.GroupLister) error {
 	app := fiber.New(fiber.Config{
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
@@ -30,8 +29,12 @@ func Run(ctx context.Context, logger *slog.Logger, cfg Config, res resolver.Grou
 	// Request logging middleware.
 	app.Use(slogfiber.New(logger))
 
-	// Routes.
-	app.Post("/groups", NewGroupsHandler(logger, res, groupCache))
+	// REST API routes.
+	app.Get("/groups/:email", NewGetGroupHandler(logger, res))
+	app.Get("/groups", NewListGroupsHandler(logger, res))
+	app.Get("/users/:email/groups", NewUserGroupsHandler(logger, res))
+
+	// Health check.
 	app.Get("/health", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})

@@ -46,6 +46,9 @@ func RunWithOptions(ctx context.Context, defaults *config.Config, opts config.Op
 		return fmt.Errorf("create cache: %w", err)
 	}
 
+	// Wrap with cache + singleflight deduplication.
+	cachedResolver := resolver.NewCachedResolver(logger, googleResolver, groupCache)
+
 	logger.InfoContext(ctx, "starting google-group-sync",
 		slog.Int("port", cfg.Port),
 		slog.Int("health_port", cfg.HealthPort),
@@ -56,7 +59,7 @@ func RunWithOptions(ctx context.Context, defaults *config.Config, opts config.Op
 	return server.Run(ctx, logger, server.Config{
 		Port:       cfg.Port,
 		HealthPort: cfg.HealthPort,
-	}, googleResolver, groupCache)
+	}, cachedResolver)
 }
 
 func newLogger(level, format string) *slog.Logger {
