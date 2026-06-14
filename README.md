@@ -1,43 +1,64 @@
 # Google Group Sync
 
-Google Workspace group membership resolver via HTTP API. Fetches group memberships for a given user email using the Google Admin SDK Directory API.
+Google Workspace group membership resolver via HTTP API. Fetches group memberships using the Google Admin SDK Directory API. Provides a RESTful API for querying groups by user, by group email, or listing all groups with members.
 
 ## What it does
 
-Exposes a single HTTP endpoint that resolves which Google Workspace groups a user belongs to. Designed to be called by other services (e.g., [zitadel-rbac-mapper](https://github.com/truvity/zitadel-rbac-mapper)) that need group information for access control decisions.
+Exposes HTTP endpoints that resolve Google Workspace group memberships. Designed to be called by other services (e.g., [zitadel-rbac-mapper](https://github.com/truvity/zitadel-rbac-mapper)) that need group information for access control decisions.
 
 **This service has no knowledge of Zitadel** — it's a pure Google Workspace utility.
 
 ## API
 
-### Resolve groups
+### GET /users/{email}/groups — Get groups for a user
 
 ```
-POST /groups
-Content-Type: application/json
-
-{"email": "user@example.com"}
+GET /users/user@example.com/groups
 ```
 
-Success response:
-
-```
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{"groups": ["admins@example.com", "developers@example.com"]}
+Response:
+```json
+{"email": "user@example.com", "groups": ["admins@example.com", "developers@example.com"]}
 ```
 
-Error response ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details):
+### GET /groups — List all groups with members
 
 ```
-HTTP/1.1 400 Bad Request
-Content-Type: application/problem+json
+GET /groups
+```
 
-{
-  "type": "https://github.com/truvity/google-group-sync/problems/invalid-member-key",
-  "title": "Invalid Member Key",
-  "status": 400,
+Response:
+```json
+[
+  {"email": "admins@example.com", "members": ["user1@example.com", "user2@example.com"]},
+  {"email": "developers@example.com", "members": ["user1@example.com"]}
+]
+```
+
+### GET /groups/{email} — Get a single group's members
+
+```
+GET /groups/admins@example.com
+```
+
+Response:
+```json
+{"email": "admins@example.com", "members": ["user1@example.com", "user2@example.com"]}
+```
+
+### GET /groups?email=X — Legacy compat (redirects)
+
+Redirects to `GET /users/{email}/groups` (302). Maintained for backward compatibility.
+
+### GET /health — Health check
+
+Returns `200 OK`.
+
+## Features
+
+- **Singleflight deduplication** — concurrent requests for the same email share a single in-flight Google API call
+- **LRU cache with TTL** — configurable via `GGS_CACHE_TTL` (default 5m)
+- **RFC 9457 Problem Details** — structured error responses
   "detail": "memberKey \"not-an-email\" is not a valid email address"
 }
 ```

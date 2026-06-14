@@ -35,7 +35,7 @@ type (
 )
 
 var (
-	testResolver resolver.GroupResolver
+	testResolver resolver.GroupLister
 	cfg          testConfig
 )
 
