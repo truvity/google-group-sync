@@ -59,6 +59,15 @@ Returns `200 OK`.
 - **Singleflight deduplication** — concurrent requests for the same email share a single in-flight Google API call
 - **LRU cache with TTL** — configurable via `GGS_CACHE_TTL` (default 5m)
 - **RFC 9457 Problem Details** — structured error responses
+
+```
+HTTP/1.1 400 Bad Request
+Content-Type: application/problem+json
+
+{
+  "type": "https://github.com/truvity/google-group-sync/problems/invalid-email",
+  "title": "Invalid Email",
+  "status": 400,
   "detail": "memberKey \"not-an-email\" is not a valid email address"
 }
 ```
