@@ -10,6 +10,9 @@
     "ko@latest",
     "kubernetes-helm@latest"
   ],
+  "env": {
+    "GOEXPERIMENT": "jsonv2"
+  },
   "shell": {
     "init_hook": [],
     "scripts": {}
