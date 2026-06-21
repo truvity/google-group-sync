@@ -7,8 +7,8 @@ import (
 	"github.com/truvity/google-group-sync/pkg/cache"
 )
 
-func TestCache_SetAndGet(t *testing.T) {
-	c, err := cache.New(100, 5*time.Minute)
+func TestMemoryCache_SetAndGet(t *testing.T) {
+	c, err := cache.NewMemoryCache(100, 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,8 +29,8 @@ func TestCache_SetAndGet(t *testing.T) {
 	}
 }
 
-func TestCache_Miss(t *testing.T) {
-	c, err := cache.New(100, 5*time.Minute)
+func TestMemoryCache_Miss(t *testing.T) {
+	c, err := cache.NewMemoryCache(100, 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,8 +41,8 @@ func TestCache_Miss(t *testing.T) {
 	}
 }
 
-func TestCache_Expiry(t *testing.T) {
-	c, err := cache.New(100, 1*time.Millisecond)
+func TestMemoryCache_Expiry(t *testing.T) {
+	c, err := cache.NewMemoryCache(100, 1*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,8 +57,8 @@ func TestCache_Expiry(t *testing.T) {
 	}
 }
 
-func TestCache_LRUEviction(t *testing.T) {
-	c, err := cache.New(2, 5*time.Minute)
+func TestMemoryCache_LRUEviction(t *testing.T) {
+	c, err := cache.NewMemoryCache(2, 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,8 +78,8 @@ func TestCache_LRUEviction(t *testing.T) {
 	}
 }
 
-func TestCache_EmptyGroups(t *testing.T) {
-	c, err := cache.New(100, 5*time.Minute)
+func TestMemoryCache_EmptyGroups(t *testing.T) {
+	c, err := cache.NewMemoryCache(100, 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,5 +93,27 @@ func TestCache_EmptyGroups(t *testing.T) {
 
 	if len(groups) != 0 {
 		t.Fatalf("expected 0 groups, got %d", len(groups))
+	}
+}
+
+// TestCache_ImplementsInterface verifies that MemoryCache satisfies the Cache interface.
+func TestCache_ImplementsInterface(t *testing.T) {
+	c, err := cache.NewMemoryCache(100, 5*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Use as interface.
+	var iface cache.Cache = c
+
+	iface.Set("test@example.com", []string{"g1"})
+
+	groups, ok := iface.Get("test@example.com")
+	if !ok {
+		t.Fatal("expected cache hit via interface")
+	}
+
+	if len(groups) != 1 || groups[0] != "g1" {
+		t.Fatalf("unexpected groups: %v", groups)
 	}
 }

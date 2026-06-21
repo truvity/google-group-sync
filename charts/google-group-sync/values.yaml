@@ -1,4 +1,4 @@
-replicaCount: 1
+replicaCount: 2
 
 image:
   repository: ghcr.io/truvity/google-group-sync
@@ -36,6 +36,37 @@ resources:
 serviceAccount:
   create: true
   name: ""
+
+# PodDisruptionBudget — enabled automatically when replicaCount >= 2.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Optional CiliumNetworkPolicy — default off.
+# When enabled, restricts ingress to only pods matching the specified labels.
+ciliumNetworkPolicy:
+  enabled: false
+  # Ingress allowed from pods with these labels (e.g., rbac-mapper Deployment + CronJob).
+  ingressFrom: []
+  # - matchLabels:
+  #     app.kubernetes.io/name: zitadel-rbac-mapper
+
+# Optional RBAC (ServiceAccount + Role/RoleBinding) — default off.
+# Enable if the pod needs API server access (e.g., reading ConfigMaps).
+rbac:
+  enabled: false
+  rules: []
+  # - apiGroups: [""]
+  #   resources: ["configmaps"]
+  #   verbs: ["get", "list", "watch"]
+
+# Optional HTTPRoute (Envoy Gateway) — default off.
+# group-sync is internal-only; enable only if external access is needed.
+httpRoute:
+  enabled: false
+  parentRefs: []
+  hostnames: []
+  rules: []
 
 nodeSelector: {}
 tolerations: []

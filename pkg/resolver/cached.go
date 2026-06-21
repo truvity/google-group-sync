@@ -19,13 +19,14 @@ var (
 // On cache miss, concurrent requests for the same email share a single in-flight call.
 type CachedResolver struct {
 	inner  GroupLister
-	cache  *cache.Cache
+	cache  cache.Cache
 	flight singleflight.Group
 	logger *slog.Logger
 }
 
 // NewCachedResolver creates a CachedResolver wrapping the given resolver and cache.
-func NewCachedResolver(logger *slog.Logger, inner GroupLister, c *cache.Cache) *CachedResolver {
+// The cache parameter accepts any implementation of cache.Cache (e.g., MemoryCache).
+func NewCachedResolver(logger *slog.Logger, inner GroupLister, c cache.Cache) *CachedResolver {
 	return &CachedResolver{
 		inner:  inner,
 		cache:  c,

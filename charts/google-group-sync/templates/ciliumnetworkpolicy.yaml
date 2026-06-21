@@ -1,0 +1,23 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  ingress:
+    {{- range .Values.ciliumNetworkPolicy.ingressFrom }}
+    - fromEndpoints:
+        - {{ toYaml . | nindent 10 }}
+      toPorts:
+        - ports:
+            - port: {{ $.Values.env.PORT | default "8080" | quote }}
+              protocol: TCP
+    {{- end }}
+{{- end }}

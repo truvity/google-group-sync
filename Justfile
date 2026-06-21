@@ -15,6 +15,10 @@ build: fmt
 test:
     go test ./... -coverprofile=coverage.out
 
+# Run integration tests (requires real Google Workspace + keyring credentials)
+test-integration:
+    go test -tags=integration -v -count=1 -timeout=120s ./tests/integration/...
+
 # Run linters
 lint:
     golangci-lint run ./...
