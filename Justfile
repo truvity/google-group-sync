@@ -3,8 +3,12 @@
 # Disable go.work (parent workspace interferes with standalone module builds)
 export GOWORK := "off"
 
+# Format all Go files (gofmt + goimports via golangci-lint)
+fmt:
+    golangci-lint fmt ./...
+
 # Build the binary
-build:
+build: fmt
     go build -o bin/bootstrap ./cmd/google-group-sync/
 
 # Run tests
