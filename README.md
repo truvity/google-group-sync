@@ -1,5 +1,10 @@
 # Google Group Sync
 
+[![CI](https://github.com/truvity/google-group-sync/actions/workflows/ci.yaml/badge.svg)](https://github.com/truvity/google-group-sync/actions/workflows/ci.yaml)
+[![Release](https://github.com/truvity/google-group-sync/actions/workflows/release.yaml/badge.svg)](https://github.com/truvity/google-group-sync/actions/workflows/release.yaml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/truvity/google-group-sync)](https://goreportcard.com/report/github.com/truvity/google-group-sync)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Google Workspace group membership resolver via HTTP API. Fetches group memberships using the Google Admin SDK Directory API. Provides a RESTful API for querying groups by user, by group email, or listing all groups with members.
 
 ## What it does

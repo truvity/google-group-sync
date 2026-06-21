@@ -1,5 +1,8 @@
 # Development commands for google-group-sync
 
+# Disable go.work (parent workspace interferes with standalone module builds)
+export GOWORK := "off"
+
 # Build the binary
 build:
     go build -o bin/bootstrap ./cmd/google-group-sync/
