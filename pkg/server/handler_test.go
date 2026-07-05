@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -341,6 +343,126 @@ func TestUserGroups_NoGroups(t *testing.T) {
 
 	if len(result.Groups) != 0 {
 		t.Fatalf("expected 0 groups, got %d", len(result.Groups))
+	}
+}
+
+// newLoggedUserGroupsApp builds an app with only the user-groups route,
+// logging JSON at DEBUG level into the returned buffer.
+func newLoggedUserGroupsApp(t *testing.T, res resolver.GroupLister) (*fiber.App, *bytes.Buffer) {
+	t.Helper()
+
+	buf := &bytes.Buffer{}
+	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	app := fiber.New()
+	app.Get("/users/:email/groups", server.NewUserGroupsHandler(logger, res))
+
+	return app, buf
+}
+
+func TestUserGroups_LogsLookupAtInfo(t *testing.T) {
+	mock := &mockGroupLister{
+		userGroups: map[string][]string{
+			"user@example.com": {"admins@example.com", "devs@example.com"},
+		},
+	}
+	app, buf := newLoggedUserGroupsApp(t, mock)
+
+	req := httptest.NewRequest("GET", "/users/user@example.com/groups", http.NoBody)
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	logs := buf.String()
+
+	for _, want := range []string{
+		`"level":"INFO"`,
+		`"msg":"resolved user groups"`,
+		`"email":"user@example.com"`,
+		`"groups":2`,
+		`"cached":false`,
+	} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("expected log output to contain %s, got:\n%s", want, logs)
+		}
+	}
+
+	// Group names appear only in the DEBUG detail line.
+	if !strings.Contains(logs, `"msg":"user groups detail"`) {
+		t.Errorf("expected DEBUG detail line with group names, got:\n%s", logs)
+	}
+}
+
+func TestUserGroups_LogsWarnOnZeroGroups(t *testing.T) {
+	mock := &mockGroupLister{userGroups: map[string][]string{}}
+	app, buf := newLoggedUserGroupsApp(t, mock)
+
+	req := httptest.NewRequest("GET", "/users/nobody@example.com/groups", http.NoBody)
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	logs := buf.String()
+
+	for _, want := range []string{
+		`"level":"WARN"`,
+		`"msg":"user groups lookup returned no groups"`,
+		`"email":"nobody@example.com"`,
+		`"groups":0`,
+	} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("expected log output to contain %s, got:\n%s", want, logs)
+		}
+	}
+}
+
+func TestUserGroups_LogsCachedFlag(t *testing.T) {
+	mock := &mockGroupLister{
+		userGroups: map[string][]string{
+			"user@example.com": {"admins@example.com"},
+		},
+	}
+
+	c, err := cache.New(100, 5*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	discard := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cached := resolver.NewCachedResolver(discard, mock, c)
+
+	app, buf := newLoggedUserGroupsApp(t, cached)
+
+	// First request — cache miss.
+	resp, err := app.Test(httptest.NewRequest("GET", "/users/user@example.com/groups", http.NoBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_ = resp.Body.Close()
+
+	if !strings.Contains(buf.String(), `"cached":false`) {
+		t.Errorf("expected first lookup logged as cached=false, got:\n%s", buf.String())
+	}
+
+	buf.Reset()
+
+	// Second request — served from cache.
+	resp, err = app.Test(httptest.NewRequest("GET", "/users/user@example.com/groups", http.NoBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_ = resp.Body.Close()
+
+	if !strings.Contains(buf.String(), `"cached":true`) {
+		t.Errorf("expected second lookup logged as cached=true, got:\n%s", buf.String())
 	}
 }
 

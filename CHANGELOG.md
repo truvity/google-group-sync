@@ -2,6 +2,12 @@
 
 All notable changes to google-group-sync are documented here.
 
+## [0.9.0] — 2026-07-05
+
+### Added
+- Structured per-lookup logging for `GET /users/{email}/groups`: one log line per lookup with the user email, group count, and whether the result was served from cache — INFO normally, WARN when the lookup returns zero groups; group names are logged only at DEBUG
+- `CachedResolver.ResolveGroupsCached` — resolves user groups and additionally reports whether the result came from cache
+
 ## [0.8.0] — 2026-07-04
 
 ### Changed

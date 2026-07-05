@@ -34,8 +34,22 @@ func NewCachedResolver(logger *slog.Logger, inner GroupLister, c cache.Cache) *C
 	}
 }
 
+// flightResult carries resolved groups plus cache-hit info through singleflight.
+type flightResult struct {
+	groups []string
+	cached bool
+}
+
 // ResolveGroups returns groups for the user, using cache and singleflight deduplication.
 func (r *CachedResolver) ResolveGroups(ctx context.Context, email string) ([]string, error) {
+	groups, _, err := r.ResolveGroupsCached(ctx, email)
+
+	return groups, err
+}
+
+// ResolveGroupsCached is like ResolveGroups but also reports whether the result
+// was served from cache.
+func (r *CachedResolver) ResolveGroupsCached(ctx context.Context, email string) (groups []string, cached bool, err error) {
 	// Check cache first.
 	if groups, ok := r.cache.Get(email); ok {
 		r.logger.DebugContext(ctx, "cache hit",
@@ -43,14 +57,14 @@ func (r *CachedResolver) ResolveGroups(ctx context.Context, email string) ([]str
 			slog.Int("groups", len(groups)),
 		)
 
-		return groups, nil
+		return groups, true, nil
 	}
 
 	// Deduplicate concurrent requests for the same email.
 	v, err, shared := r.flight.Do("user:"+email, func() (interface{}, error) {
 		// Double-check cache inside singleflight (another goroutine may have populated it).
 		if groups, ok := r.cache.Get(email); ok {
-			return groups, nil
+			return flightResult{groups: groups, cached: true}, nil
 		}
 
 		groups, err := r.inner.ResolveGroups(ctx, email)
@@ -65,10 +79,10 @@ func (r *CachedResolver) ResolveGroups(ctx context.Context, email string) ([]str
 
 		r.cache.Set(email, groups)
 
-		return groups, nil
+		return flightResult{groups: groups}, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	if shared {
@@ -77,7 +91,9 @@ func (r *CachedResolver) ResolveGroups(ctx context.Context, email string) ([]str
 		)
 	}
 
-	return v.([]string), nil //nolint:forcetypeassert // always []string from Do callback
+	res := v.(flightResult) //nolint:forcetypeassert // always flightResult from Do callback
+
+	return res.groups, res.cached, nil
 }
 
 // ListGroups returns all groups with their members. This call is deduplicated via singleflight.

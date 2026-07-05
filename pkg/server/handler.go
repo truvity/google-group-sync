@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 
@@ -84,6 +85,12 @@ func NewGetGroupHandler(logger *slog.Logger, res resolver.GroupLister) fiber.Han
 	}
 }
 
+// cacheAwareResolver reports whether a lookup was served from cache
+// (implemented by resolver.CachedResolver).
+type cacheAwareResolver interface {
+	ResolveGroupsCached(ctx context.Context, email string) ([]string, bool, error)
+}
+
 // NewUserGroupsHandler creates a fiber handler for GET /users/{email}/groups.
 // Returns all groups a user belongs to.
 func NewUserGroupsHandler(logger *slog.Logger, res resolver.GroupLister) fiber.Handler {
@@ -93,7 +100,18 @@ func NewUserGroupsHandler(logger *slog.Logger, res resolver.GroupLister) fiber.H
 			return sendProblem(c, problemBadRequest("user email is required"))
 		}
 
-		groups, err := res.ResolveGroups(c.Context(), email)
+		var (
+			groups []string
+			cached bool
+			err    error
+		)
+
+		if car, ok := res.(cacheAwareResolver); ok {
+			groups, cached, err = car.ResolveGroupsCached(c.Context(), email)
+		} else {
+			groups, err = res.ResolveGroups(c.Context(), email)
+		}
+
 		if err != nil {
 			logger.ErrorContext(c.Context(), "failed to resolve user groups",
 				slog.String("email", email),
@@ -110,6 +128,26 @@ func NewUserGroupsHandler(logger *slog.Logger, res resolver.GroupLister) fiber.H
 		if groups == nil {
 			groups = []string{}
 		}
+
+		if len(groups) == 0 {
+			logger.WarnContext(c.Context(), "user groups lookup returned no groups",
+				slog.String("email", email),
+				slog.Int("groups", 0),
+				slog.Bool("cached", cached),
+			)
+		} else {
+			logger.InfoContext(c.Context(), "resolved user groups",
+				slog.String("email", email),
+				slog.Int("groups", len(groups)),
+				slog.Bool("cached", cached),
+			)
+		}
+
+		// Group names only at DEBUG (too noisy for INFO).
+		logger.DebugContext(c.Context(), "user groups detail",
+			slog.String("email", email),
+			slog.Any("groups", groups),
+		)
 
 		return c.JSON(userGroupsResponse{
 			Email:  email,
