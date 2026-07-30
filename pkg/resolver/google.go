@@ -8,6 +8,8 @@ import (
 	"golang.org/x/oauth2/google"
 	admin "google.golang.org/api/admin/directory/v1"
 	"google.golang.org/api/option"
+
+	"github.com/truvity/google-group-sync/pkg/keysource"
 )
 
 // Compile-time interface checks.
@@ -18,19 +20,23 @@ var (
 
 // GoogleResolver implements GroupResolver using the Google Admin SDK Directory API.
 // It uses domain-wide delegation with a service account impersonating an admin user.
+//
+// The key comes from a keysource.Source and is fetched on every service
+// construction: a rotated key (kubelet-refreshed Secret mount) is picked
+// up by the next call with no restart.
 type GoogleResolver struct {
 	logger     *slog.Logger
-	saKeyJSON  []byte
+	keys       keysource.Source
 	adminEmail string
 }
 
 // NewGoogleResolver creates a new GoogleResolver.
-// saKeyJSON is the service account key file content.
+// keys yields the service-account key content (static or file-backed).
 // adminEmail is the admin user to impersonate for domain-wide delegation.
-func NewGoogleResolver(logger *slog.Logger, saKeyJSON []byte, adminEmail string) *GoogleResolver {
+func NewGoogleResolver(logger *slog.Logger, keys keysource.Source, adminEmail string) *GoogleResolver {
 	return &GoogleResolver{
 		logger:     logger,
-		saKeyJSON:  saKeyJSON,
+		keys:       keys,
 		adminEmail: adminEmail,
 	}
 }
@@ -128,7 +134,12 @@ func (r *GoogleResolver) GetGroup(ctx context.Context, groupEmail string) (*Grou
 }
 
 func (r *GoogleResolver) newService(ctx context.Context) (*admin.Service, error) {
-	jwtConfig, err := google.JWTConfigFromJSON(r.saKeyJSON, admin.AdminDirectoryGroupReadonlyScope, admin.AdminDirectoryGroupMemberReadonlyScope)
+	saKeyJSON, err := r.keys.Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("load service account key: %w", err)
+	}
+
+	jwtConfig, err := google.JWTConfigFromJSON(saKeyJSON, admin.AdminDirectoryGroupReadonlyScope, admin.AdminDirectoryGroupMemberReadonlyScope)
 	if err != nil {
 		return nil, fmt.Errorf("parse service account key: %w", err)
 	}

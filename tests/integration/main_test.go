@@ -21,6 +21,7 @@ import (
 	"github.com/zalando/go-keyring"
 	"gopkg.in/yaml.v3"
 
+	"github.com/truvity/google-group-sync/pkg/keysource"
 	"github.com/truvity/google-group-sync/pkg/resolver"
 )
 
@@ -80,7 +81,7 @@ func TestMain(m *testing.M) {
 
 	testResolver = resolver.NewGoogleResolver(
 		logger,
-		[]byte(saKeyJSON),
+		keysource.Static([]byte(saKeyJSON)),
 		cfg.Google.AdminEmail,
 	)
 
