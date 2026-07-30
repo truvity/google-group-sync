@@ -30,14 +30,14 @@ func RunWithOptions(ctx context.Context, defaults *config.Config, opts config.Op
 
 	logger := newLogger(cfg.LogLevel, cfg.LogFormat)
 
-	saKeyJSON, err := cfg.SAKeyJSON()
+	saKeys, err := cfg.SAKeySource(logger)
 	if err != nil {
 		return fmt.Errorf("load SA key: %w", err)
 	}
 
 	googleResolver := resolver.NewGoogleResolver(
 		logger,
-		saKeyJSON,
+		saKeys,
 		cfg.GoogleAdminEmail,
 	)
 

@@ -3,10 +3,13 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
 	"github.com/caarlos0/env/v11"
+
+	"github.com/truvity/google-group-sync/pkg/keysource"
 )
 
 // Config holds all service configuration loaded from environment variables.
@@ -96,6 +99,27 @@ func (c *Config) SAKeyJSON() ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+// SAKeySource returns the key source for the resolver: static bytes for
+// an env-injected key, a re-reading file source for the Secret mount —
+// the latter picks up rotations without a restart.
+func (c *Config) SAKeySource(logger *slog.Logger) (keysource.Source, error) {
+	if c.GoogleSAKeyJSON != "" {
+		return keysource.Static([]byte(c.GoogleSAKeyJSON)), nil
+	}
+
+	if c.GoogleSAKeyFile == "" {
+		return nil, fmt.Errorf("neither GOOGLE_SA_KEY_JSON nor GOOGLE_SA_KEY_FILE is set")
+	}
+
+	// Fail fast on a broken mount at startup; afterwards the source
+	// serves last-known-good through transient swap windows.
+	if _, err := os.Stat(c.GoogleSAKeyFile); err != nil {
+		return nil, fmt.Errorf("SA key file %q: %w", c.GoogleSAKeyFile, err)
+	}
+
+	return keysource.File(logger, c.GoogleSAKeyFile), nil
 }
 
 func (c *Config) validate() error {
