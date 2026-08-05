@@ -33,22 +33,37 @@ type mockGroupLister struct {
 	groupMap map[string]*resolver.Group
 	getErr   error
 
+	// Suspended marks emails whose account the directory reports
+	// suspended.
+	suspended map[string]bool
+
 	// Call counting.
 	resolveCallCount int
 }
 
-func (m *mockGroupLister) ResolveGroups(_ context.Context, email string) ([]string, error) {
+func (m *mockGroupLister) ResolveGroups(ctx context.Context, email string) ([]string, error) {
+	ug, err := m.ResolveUser(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	return ug.Groups, nil
+}
+
+func (m *mockGroupLister) ResolveUser(_ context.Context, email string) (resolver.UserGroups, error) {
 	m.resolveCallCount++
 
 	if m.resolveErr != nil {
-		return nil, m.resolveErr
+		return resolver.UserGroups{}, m.resolveErr
 	}
+
+	ug := resolver.UserGroups{Groups: []string{}, Suspended: m.suspended[email]}
 
 	if groups, ok := m.userGroups[email]; ok {
-		return groups, nil
+		ug.Groups = groups
 	}
 
-	return []string{}, nil
+	return ug, nil
 }
 
 func (m *mockGroupLister) ListGroups(_ context.Context) ([]resolver.Group, error) {
@@ -275,6 +290,43 @@ func TestUserGroups_Success(t *testing.T) {
 
 	if len(result.Groups) != 2 {
 		t.Fatalf("expected 2 groups, got %d", len(result.Groups))
+	}
+}
+
+// The suspension signal reaches the wire: a consumer deciding grants
+// must be able to tell "suspended, revoke" from the ambiguous "no
+// groups" — and an active account must never read as suspended.
+func TestUserGroups_SuspendedSignal(t *testing.T) {
+	mock := &mockGroupLister{
+		userGroups: map[string][]string{
+			"gone@example.com": {"admins@example.com"},
+			"live@example.com": {"admins@example.com"},
+		},
+		suspended: map[string]bool{"gone@example.com": true},
+	}
+	app := newTestApp(t, mock)
+
+	for email, want := range map[string]bool{"gone@example.com": true, "live@example.com": false} {
+		req := httptest.NewRequest("GET", "/users/"+email+"/groups", http.NoBody)
+
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var result struct {
+			Suspended bool `json:"suspended"`
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
+
+		_ = resp.Body.Close()
+
+		if result.Suspended != want {
+			t.Fatalf("%s: expected suspended=%v, got %v", email, want, result.Suspended)
+		}
 	}
 }
 
@@ -521,6 +573,12 @@ func (c *countingGroupLister) ResolveGroups(ctx context.Context, email string) (
 	*c.count++
 
 	return c.inner.ResolveGroups(ctx, email)
+}
+
+func (c *countingGroupLister) ResolveUser(ctx context.Context, email string) (resolver.UserGroups, error) {
+	*c.count++
+
+	return c.inner.ResolveUser(ctx, email)
 }
 
 func (c *countingGroupLister) ListGroups(ctx context.Context) ([]resolver.Group, error) {

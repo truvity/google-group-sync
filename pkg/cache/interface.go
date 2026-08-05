@@ -15,9 +15,20 @@ package cache
 //     table with TTL attribute for automatic expiration. Not yet implemented —
 //     MemoryCache is sufficient for the current traffic pattern.
 type Cache interface {
-	// Get returns cached groups for the key, or (nil, false) if not found/expired.
-	Get(key string) ([]string, bool)
+	// Get returns the cached resolution for the key, or (zero, false) if
+	// not found/expired.
+	Get(key string) (UserGroups, bool)
 
-	// Set stores groups for the key with implementation-defined TTL semantics.
-	Set(key string, groups []string)
+	// Set stores a resolution for the key with implementation-defined TTL
+	// semantics.
+	Set(key string, ug UserGroups)
+}
+
+// UserGroups is one user's cached resolution: their group addresses,
+// plus whether the directory reports the account suspended. Defined here
+// rather than in resolver so the cache does not import its own consumer;
+// resolver aliases it as the public name.
+type UserGroups struct {
+	Groups    []string `json:"groups"`
+	Suspended bool     `json:"suspended"`
 }

@@ -34,55 +34,63 @@ func NewCachedResolver(logger *slog.Logger, inner GroupLister, c cache.Cache) *C
 	}
 }
 
-// flightResult carries resolved groups plus cache-hit info through singleflight.
+// flightResult carries one resolution plus cache-hit info through singleflight.
 type flightResult struct {
-	groups []string
+	ug     UserGroups
 	cached bool
 }
 
 // ResolveGroups returns groups for the user, using cache and singleflight deduplication.
 func (r *CachedResolver) ResolveGroups(ctx context.Context, email string) ([]string, error) {
-	groups, _, err := r.ResolveGroupsCached(ctx, email)
+	ug, _, err := r.ResolveUserCached(ctx, email)
 
-	return groups, err
+	return ug.Groups, err
 }
 
-// ResolveGroupsCached is like ResolveGroups but also reports whether the result
-// was served from cache.
-func (r *CachedResolver) ResolveGroupsCached(ctx context.Context, email string) (groups []string, cached bool, err error) {
+// ResolveUser returns the user's groups plus the suspension signal,
+// using cache and singleflight deduplication.
+func (r *CachedResolver) ResolveUser(ctx context.Context, email string) (UserGroups, error) {
+	ug, _, err := r.ResolveUserCached(ctx, email)
+
+	return ug, err
+}
+
+// ResolveUserCached is like ResolveUser but also reports whether the
+// result was served from cache.
+func (r *CachedResolver) ResolveUserCached(ctx context.Context, email string) (ug UserGroups, cached bool, err error) {
 	// Check cache first.
-	if groups, ok := r.cache.Get(email); ok {
+	if ug, ok := r.cache.Get(email); ok {
 		r.logger.DebugContext(ctx, "cache hit",
 			slog.String("email", email),
-			slog.Int("groups", len(groups)),
+			slog.Int("groups", len(ug.Groups)),
 		)
 
-		return groups, true, nil
+		return ug, true, nil
 	}
 
 	// Deduplicate concurrent requests for the same email.
 	v, err, shared := r.flight.Do("user:"+email, func() (interface{}, error) {
 		// Double-check cache inside singleflight (another goroutine may have populated it).
-		if groups, ok := r.cache.Get(email); ok {
-			return flightResult{groups: groups, cached: true}, nil
+		if ug, ok := r.cache.Get(email); ok {
+			return flightResult{ug: ug, cached: true}, nil
 		}
 
-		groups, err := r.inner.ResolveGroups(ctx, email)
+		ug, err := r.inner.ResolveUser(ctx, email)
 		if err != nil {
 			return nil, err
 		}
 
 		// Ensure non-null slice.
-		if groups == nil {
-			groups = []string{}
+		if ug.Groups == nil {
+			ug.Groups = []string{}
 		}
 
-		r.cache.Set(email, groups)
+		r.cache.Set(email, ug)
 
-		return flightResult{groups: groups}, nil
+		return flightResult{ug: ug}, nil
 	})
 	if err != nil {
-		return nil, false, err
+		return UserGroups{}, false, err
 	}
 
 	if shared {
@@ -93,7 +101,7 @@ func (r *CachedResolver) ResolveGroupsCached(ctx context.Context, email string) 
 
 	res := v.(flightResult) //nolint:forcetypeassert // always flightResult from Do callback
 
-	return res.groups, res.cached, nil
+	return res.ug, res.cached, nil
 }
 
 // ListGroups returns all groups with their members. This call is deduplicated via singleflight.
