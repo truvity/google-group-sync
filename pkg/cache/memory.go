@@ -18,7 +18,7 @@ type MemoryCache struct {
 }
 
 type entry struct {
-	groups    []string
+	ug        UserGroups
 	expiresAt time.Time
 }
 
@@ -32,26 +32,27 @@ func NewMemoryCache(maxSize int, ttl time.Duration) (*MemoryCache, error) {
 	return &MemoryCache{inner: inner, ttl: ttl}, nil
 }
 
-// Get returns cached groups for the email, or nil if not found or expired.
-func (c *MemoryCache) Get(key string) ([]string, bool) {
+// Get returns the cached resolution for the key, or (zero, false) if not
+// found or expired.
+func (c *MemoryCache) Get(key string) (UserGroups, bool) {
 	e, ok := c.inner.Get(key)
 	if !ok {
-		return nil, false
+		return UserGroups{}, false
 	}
 
 	if time.Now().After(e.expiresAt) {
 		c.inner.Remove(key)
 
-		return nil, false
+		return UserGroups{}, false
 	}
 
-	return e.groups, true
+	return e.ug, true
 }
 
-// Set stores groups for the key with the configured TTL.
-func (c *MemoryCache) Set(key string, groups []string) {
+// Set stores a resolution for the key with the configured TTL.
+func (c *MemoryCache) Set(key string, ug UserGroups) {
 	c.inner.Add(key, entry{
-		groups:    groups,
+		ug:        ug,
 		expiresAt: time.Now().Add(c.ttl),
 	})
 }

@@ -2,6 +2,21 @@
 
 All notable changes to google-group-sync are documented here.
 
+## [0.12.0] — 2026-08-05
+
+### Added
+- `GET /users/{email}/groups` now reports the account's suspension
+  signal: `"suspended": true` when the serving domain's directory
+  reports the account suspended, read from the user's group member
+  entry (`Members.Get` status — covered by the existing group-member
+  scope, no new delegation). External members and probe failures read
+  as not-suspended: the signal revokes access downstream and must never
+  fire on absence of evidence. Consumers deciding grants can now tell
+  "suspended, revoke" from the ambiguous "no groups" (INF-518).
+- `GroupResolver.ResolveUser` / `CachedResolver.ResolveUserCached` —
+  the groups-plus-suspension resolution behind the field; the cache
+  stores and round-trips it.
+
 ## [0.9.0] — 2026-07-05
 
 ### Added

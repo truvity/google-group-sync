@@ -21,6 +21,11 @@ type (
 	userGroupsResponse struct {
 		Email  string   `json:"email"`
 		Groups []string `json:"groups"`
+		// Suspended is the directory's own suspension signal for this
+		// account (from its group member entry). Consumers deciding
+		// grants read it to tell "suspended, revoke" from the ambiguous
+		// "no groups". Never set for accounts outside the serving domain.
+		Suspended bool `json:"suspended"`
 	}
 )
 
@@ -88,11 +93,11 @@ func NewGetGroupHandler(logger *slog.Logger, res resolver.GroupLister) fiber.Han
 // cacheAwareResolver reports whether a lookup was served from cache
 // (implemented by resolver.CachedResolver).
 type cacheAwareResolver interface {
-	ResolveGroupsCached(ctx context.Context, email string) ([]string, bool, error)
+	ResolveUserCached(ctx context.Context, email string) (resolver.UserGroups, bool, error)
 }
 
 // NewUserGroupsHandler creates a fiber handler for GET /users/{email}/groups.
-// Returns all groups a user belongs to.
+// Returns all groups a user belongs to, plus the account's suspension signal.
 func NewUserGroupsHandler(logger *slog.Logger, res resolver.GroupLister) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		email := strings.TrimSpace(c.Params("email"))
@@ -101,15 +106,15 @@ func NewUserGroupsHandler(logger *slog.Logger, res resolver.GroupLister) fiber.H
 		}
 
 		var (
-			groups []string
+			ug     resolver.UserGroups
 			cached bool
 			err    error
 		)
 
 		if car, ok := res.(cacheAwareResolver); ok {
-			groups, cached, err = car.ResolveGroupsCached(c.Context(), email)
+			ug, cached, err = car.ResolveUserCached(c.Context(), email)
 		} else {
-			groups, err = res.ResolveGroups(c.Context(), email)
+			ug, err = res.ResolveUser(c.Context(), email)
 		}
 
 		if err != nil {
@@ -125,33 +130,36 @@ func NewUserGroupsHandler(logger *slog.Logger, res resolver.GroupLister) fiber.H
 			return sendProblem(c, problemGoogleAPIError(err.Error()))
 		}
 
-		if groups == nil {
-			groups = []string{}
+		if ug.Groups == nil {
+			ug.Groups = []string{}
 		}
 
-		if len(groups) == 0 {
+		if len(ug.Groups) == 0 {
 			logger.WarnContext(c.Context(), "user groups lookup returned no groups",
 				slog.String("email", email),
 				slog.Int("groups", 0),
 				slog.Bool("cached", cached),
+				slog.Bool("suspended", ug.Suspended),
 			)
 		} else {
 			logger.InfoContext(c.Context(), "resolved user groups",
 				slog.String("email", email),
-				slog.Int("groups", len(groups)),
+				slog.Int("groups", len(ug.Groups)),
 				slog.Bool("cached", cached),
+				slog.Bool("suspended", ug.Suspended),
 			)
 		}
 
 		// Group names only at DEBUG (too noisy for INFO).
 		logger.DebugContext(c.Context(), "user groups detail",
 			slog.String("email", email),
-			slog.Any("groups", groups),
+			slog.Any("groups", ug.Groups),
 		)
 
 		return c.JSON(userGroupsResponse{
-			Email:  email,
-			Groups: groups,
+			Email:     email,
+			Groups:    ug.Groups,
+			Suspended: ug.Suspended,
 		})
 	}
 }
