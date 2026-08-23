@@ -25,6 +25,17 @@ type Config struct {
 	// Server settings.
 	Port       int `env:"PORT"`
 	HealthPort int `env:"HEALTH_PORT"`
+	// ConnectPort serves the ConnectRPC DirectoryService (0 disables it).
+	ConnectPort int `env:"CONNECT_PORT"`
+
+	// Domains this directory serves — the addresses it vouches for. The
+	// DirectoryService reports these (Describe) and uses them to answer
+	// "no opinion" for out-of-domain addresses. Comma-separated.
+	Domains []string `env:"DOMAINS"`
+
+	// ProbeGroup is a known-present group used by DirectoryService.Probe as
+	// the health canary; empty falls back to impersonating the admin.
+	ProbeGroup string `env:"PROBE_GROUP"`
 
 	// Cache settings.
 	CacheTTL     time.Duration `env:"CACHE_TTL"`
@@ -46,6 +57,7 @@ func DefaultConfig() Config {
 	return Config{
 		Port:         8080,
 		HealthPort:   7070,
+		ConnectPort:  8090,
 		CacheTTL:     5 * time.Minute,
 		CacheMaxSize: 10000,
 		LogLevel:     "info",

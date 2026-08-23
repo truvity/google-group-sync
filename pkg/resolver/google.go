@@ -2,11 +2,14 @@ package resolver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 
 	"golang.org/x/oauth2/google"
 	admin "google.golang.org/api/admin/directory/v1"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 
 	"github.com/truvity/google-group-sync/pkg/keysource"
@@ -166,6 +169,10 @@ func (r *GoogleResolver) GetGroup(ctx context.Context, groupEmail string) (*Grou
 	// Verify the group exists.
 	g, err := svc.Groups.Get(groupEmail).Context(ctx).Do()
 	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrGroupNotFound
+		}
+
 		return nil, fmt.Errorf("get group %q: %w", groupEmail, err)
 	}
 
@@ -186,7 +193,15 @@ func (r *GoogleResolver) newService(ctx context.Context) (*admin.Service, error)
 		return nil, fmt.Errorf("load service account key: %w", err)
 	}
 
-	jwtConfig, err := google.JWTConfigFromJSON(saKeyJSON, admin.AdminDirectoryGroupReadonlyScope, admin.AdminDirectoryGroupMemberReadonlyScope)
+	jwtConfig, err := google.JWTConfigFromJSON(saKeyJSON,
+		admin.AdminDirectoryGroupReadonlyScope,
+		admin.AdminDirectoryGroupMemberReadonlyScope,
+		// User-read: for GetAccount's name + suspension. Add this scope to
+		// the service account's domain-wide delegation grant in the Google
+		// Admin console (API controls → domain-wide delegation) alongside
+		// the two group scopes, or GetAccount returns permission errors.
+		admin.AdminDirectoryUserReadonlyScope,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("parse service account key: %w", err)
 	}
@@ -222,4 +237,43 @@ func (r *GoogleResolver) listGroupMembers(ctx context.Context, svc *admin.Servic
 	}
 
 	return members, nil
+}
+
+// GetAccount reads one account's name and suspension via the Users API
+// (needs the user-read scope, see newService). A not-found address returns
+// Account{Found: false} with no error — the caller reads that against the
+// served domains: not-found in a served domain is "gone", out of domain is
+// "no opinion".
+func (r *GoogleResolver) GetAccount(ctx context.Context, email string) (Account, error) {
+	svc, err := r.newService(ctx)
+	if err != nil {
+		return Account{}, err
+	}
+
+	u, err := svc.Users.Get(email).Context(ctx).Do()
+	if err != nil {
+		if isNotFound(err) {
+			return Account{Email: email, Found: false}, nil
+		}
+
+		return Account{}, fmt.Errorf("get user %q: %w", email, err)
+	}
+
+	acct := Account{Email: email, Found: true, Live: !u.Suspended}
+	if u.Name != nil {
+		acct.GivenName = u.Name.GivenName
+		acct.FamilyName = u.Name.FamilyName
+	}
+
+	return acct, nil
+}
+
+// isNotFound reports whether err is a Google API 404.
+func isNotFound(err error) bool {
+	var apiErr *googleapi.Error
+	if errors.As(err, &apiErr) {
+		return apiErr.Code == http.StatusNotFound
+	}
+
+	return false
 }

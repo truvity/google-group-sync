@@ -10,6 +10,10 @@ env:
   # GOOGLE_SA_KEY_FILE: /etc/secrets/sa-key.json
   PORT: "8080"
   HEALTH_PORT: "7070"
+  # DirectoryService (ConnectRPC). Set DOMAINS (comma-separated, the
+  # addresses this directory vouches for) and optionally PROBE_GROUP per
+  # deployment. CONNECT_PORT: "0" disables the DirectoryService.
+  CONNECT_PORT: "8090"
   CACHE_TTL: "5m"
   CACHE_MAX_SIZE: "10000"
   LOG_LEVEL: "info"
@@ -23,6 +27,7 @@ secrets:
   saKeySecretKey: "sa-key.json"
 
 service:
+  connectPort: 8090
   type: ClusterIP
   port: 8080
 

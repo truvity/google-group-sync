@@ -86,6 +86,11 @@ func (m *mockGroupLister) GetGroup(_ context.Context, groupEmail string) (*resol
 	return nil, errors.New("not found")
 }
 
+// GetAccount satisfies GroupLister; the REST handlers do not use it.
+func (m *mockGroupLister) GetAccount(_ context.Context, email string) (resolver.Account, error) {
+	return resolver.Account{Email: email, Found: true, Live: !m.suspended[email]}, nil
+}
+
 func newTestApp(t *testing.T, mock *mockGroupLister) *fiber.App {
 	t.Helper()
 
@@ -591,4 +596,8 @@ func (c *countingGroupLister) GetGroup(ctx context.Context, groupEmail string) (
 	*c.count++
 
 	return c.inner.GetGroup(ctx, groupEmail)
+}
+
+func (c *countingGroupLister) GetAccount(_ context.Context, email string) (resolver.Account, error) {
+	return resolver.Account{Email: email, Found: true, Live: true}, nil
 }

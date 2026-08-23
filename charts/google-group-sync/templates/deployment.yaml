@@ -33,6 +33,9 @@ spec:
             - name: health
               containerPort: {{ .Values.env.HEALTH_PORT | default 7070 }}
               protocol: TCP
+            - name: connect
+              containerPort: {{ .Values.env.CONNECT_PORT | default 8090 }}
+              protocol: TCP
           env:
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}

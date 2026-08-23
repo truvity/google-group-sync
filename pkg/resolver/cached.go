@@ -127,3 +127,10 @@ func (r *CachedResolver) GetGroup(ctx context.Context, groupEmail string) (*Grou
 
 	return v.(*Group), nil //nolint:forcetypeassert // always *Group from Do callback
 }
+
+// GetAccount passes through to the inner resolver. Account standing is not
+// cached: it is read on demand at reconcile time and is cheap relative to
+// the group listings the cache exists for.
+func (r *CachedResolver) GetAccount(ctx context.Context, email string) (Account, error) {
+	return r.inner.GetAccount(ctx, email)
+}

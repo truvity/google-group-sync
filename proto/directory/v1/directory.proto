@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+// Package directory.v1 is the directory resolver contract: liveness and
+// flat group membership for a corporate directory. google-group-sync is
+// the first implementation; a second IdP backend is another server behind
+// this same contract. Consumers (github-roster, zitadel-rbac-mapper) hold
+// no directory credential — only this endpoint.
+package directory.v1;
+
+option go_package = "github.com/truvity/google-group-sync/gen/directory/v1;directoryv1";
+
+// DirectoryService answers three questions about a directory: is it
+// healthy, who is in a group, and what is an account's standing.
+service DirectoryService {
+  // Describe returns the served domains and backend identity. A consumer
+  // uses the domains to decide which addresses this directory vouches for.
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+
+  // Probe exercises the credential against a known-present group (the
+  // health canary). A healthy Probe means reads are working right now.
+  rpc Probe(ProbeRequest) returns (ProbeResponse);
+
+  // GetGroup returns a group's flat membership. Nested groups are NOT
+  // expanded. found=false means the directory returned not-found for a
+  // group in a served domain (an absent group — fail-safe: suppress its
+  // removals), distinct from an RPC error (could not read at all).
+  rpc GetGroup(GetGroupRequest) returns (GetGroupResponse);
+
+  // ListGroups returns every group with its flat members. For pickers and
+  // for the mapper's whole-directory view.
+  rpc ListGroups(ListGroupsRequest) returns (ListGroupsResponse);
+
+  // GetAccount returns one account's standing. See Account for the
+  // in-domain vs out-of-domain semantics that the fail-safe depends on.
+  rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
+
+  // ResolveAccounts is GetAccount for many addresses in one call.
+  rpc ResolveAccounts(ResolveAccountsRequest) returns (ResolveAccountsResponse);
+
+  // ResolveUser returns the groups an account belongs to plus its
+  // suspension signal — the grant-decision call the rbac-mapper makes.
+  rpc ResolveUser(ResolveUserRequest) returns (ResolveUserResponse);
+}
+
+message DescribeRequest {}
+message DescribeResponse {
+  // domains this directory serves (vouches for suspension of).
+  repeated string domains = 1;
+  // backend identifier, e.g. "google-workspace".
+  string backend = 2;
+}
+
+message ProbeRequest {}
+message ProbeResponse {
+  bool healthy = 1;
+  // detail carries the failure reason when healthy=false.
+  string detail = 2;
+}
+
+message GetGroupRequest {
+  string email = 1;
+}
+message GetGroupResponse {
+  Group group = 1;
+  // false when the directory reported the group not-found (absent group).
+  bool found = 2;
+}
+
+message ListGroupsRequest {}
+message ListGroupsResponse {
+  repeated Group groups = 1;
+}
+
+message Group {
+  string email = 1;
+  // flat member addresses; nested groups are not expanded.
+  repeated string members = 2;
+}
+
+message GetAccountRequest {
+  string email = 1;
+}
+message GetAccountResponse {
+  Account account = 1;
+}
+
+message ResolveAccountsRequest {
+  repeated string emails = 1;
+}
+message ResolveAccountsResponse {
+  // one entry per requested address, same order.
+  repeated Account accounts = 1;
+}
+
+// Account is one address's standing IN THIS DIRECTORY.
+//
+//   in_domain=true,  found=true,  live=true   → a live account.
+//   in_domain=true,  found=true,  live=false  → suspended: gone for the
+//                                               orgs this account governs.
+//   in_domain=true,  found=false               → deleted/absent: also gone.
+//   in_domain=false                            → NO OPINION. This directory
+//     does not serve the address's domain; the caller must resolve it from
+//     its home directory. Never read as "gone".
+message Account {
+  string email = 1;
+  bool in_domain = 2;
+  bool found = 3;
+  bool live = 4;
+  // given/family name when the backend can supply them (needs the
+  // user-read scope on Google); empty otherwise — callers must tolerate.
+  string given_name = 5;
+  string family_name = 6;
+}
+
+message ResolveUserRequest {
+  string email = 1;
+}
+message ResolveUserResponse {
+  repeated string groups = 1;
+  bool suspended = 2;
+}
