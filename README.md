@@ -32,6 +32,30 @@ Exposes HTTP endpoints that resolve Google Workspace group memberships. Designed
 
 ### GET /groups/{email} — Get a single group's members
 
+### DirectoryService (ConnectRPC)
+
+Alongside the REST API, the service serves the `directory.v1.DirectoryService`
+ConnectRPC contract (`proto/directory/v1/directory.proto`) on `CONNECT_PORT`
+(default 8090; `0` disables it). Connect speaks JSON over plain HTTP POST as
+well as gRPC, so `curl` and generated Go/TS clients share one endpoint. It is
+the interface directory consumers use so they hold no Google credential of
+their own — only this endpoint:
+
+- `Describe` — served domains + backend, so a caller knows which addresses
+  this directory vouches for.
+- `Probe` — health canary against `PROBE_GROUP` (or the impersonated admin).
+- `GetGroup` / `ListGroups` — flat group membership; `GetGroup` returns
+  `found=false` for an absent group rather than an error (fail-safe).
+- `GetAccount` / `ResolveAccounts` — an account's standing. **In-domain**
+  addresses report `found`/`live` and (with the user-read scope) name;
+  **out-of-domain** addresses report `in_domain=false` — *no opinion*, never
+  "gone", so a consumer resolves them from their home directory.
+- `ResolveUser` — groups + suspension, the grant-decision call.
+
+`GetAccount` needs `https://www.googleapis.com/auth/admin.directory.user.readonly`
+added to the service account's domain-wide delegation grant, alongside the two
+group scopes. Regenerate stubs with `just generate` (buf).
+
 ### GET /health — Health check
 
 ## Architecture
@@ -94,6 +118,8 @@ Optional templates (default off, values-gated):
 | `env.GOOGLE_ADMIN_EMAIL` | — | Admin email for domain-wide delegation |
 | `env.PORT` | `8080` | HTTP server port |
 | `env.HEALTH_PORT` | `7070` | Health probe port |
+| `env.CONNECT_PORT` | `8090` | DirectoryService (ConnectRPC) port; `0` disables |
+| `env.DOMAINS` | — | Served domains (comma-separated) for the DirectoryService |
 | `env.CACHE_TTL` | `5m` | Group membership cache TTL |
 | `env.CACHE_MAX_SIZE` | `10000` | Max cache entries (LRU) |
 | `secrets.saKeySecretName` | — | K8s Secret with SA key JSON |
@@ -112,6 +138,9 @@ Optional templates (default off, values-gated):
 | `SA_KEY_SECRET_NAME` | No | — | AWS Secrets Manager secret name (Lambda only) |
 | `PORT` | No | `8080` | HTTP server port |
 | `HEALTH_PORT` | No | `7070` | Health probe port |
+| `CONNECT_PORT` | No | `8090` | DirectoryService (ConnectRPC) port; `0` disables it |
+| `DOMAINS` | No | — | Served domains (comma-separated) the DirectoryService vouches for |
+| `PROBE_GROUP` | No | — | Group used as the DirectoryService health canary |
 | `CACHE_TTL` | No | `5m` | Cache TTL (Go duration) |
 | `CACHE_MAX_SIZE` | No | `10000` | Max cache entries |
 | `LOG_LEVEL` | No | `info` | Log level |

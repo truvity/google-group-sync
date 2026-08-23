@@ -3,6 +3,11 @@
 # Disable go.work (parent workspace interferes with standalone module builds)
 export GOWORK := "off"
 
+# Regenerate protobuf/Connect code from proto/ into gen/.
+generate:
+    buf lint
+    buf generate
+
 # Format all Go files (gofmt + goimports via golangci-lint)
 fmt:
     golangci-lint fmt ./...

@@ -56,10 +56,21 @@ func RunWithOptions(ctx context.Context, defaults *config.Config, opts config.Op
 		slog.Int("cache_max_size", cfg.CacheMaxSize),
 	)
 
-	return server.Run(ctx, logger, server.Config{
+	// DirectoryService (ConnectRPC) on its own port, beside the REST server.
+	connectErr := make(chan error, 1)
+	go func() {
+		connectErr <- startConnect(ctx, logger, cfg.ConnectPort, cachedResolver,
+			cfg.Domains, cfg.GoogleAdminEmail, cfg.ProbeGroup)
+	}()
+
+	if err := server.Run(ctx, logger, server.Config{
 		Port:       cfg.Port,
 		HealthPort: cfg.HealthPort,
-	}, cachedResolver)
+	}, cachedResolver); err != nil {
+		return err
+	}
+
+	return <-connectErr
 }
 
 func newLogger(level, format string) *slog.Logger {

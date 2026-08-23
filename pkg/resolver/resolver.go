@@ -3,6 +3,7 @@ package resolver
 
 import (
 	"context"
+	"errors"
 
 	"github.com/truvity/google-group-sync/pkg/cache"
 )
@@ -15,6 +16,10 @@ import (
 // it: an external member reports no status, which is the fail-safe
 // reading — each directory vouches for suspension of ITS accounts only.
 type UserGroups = cache.UserGroups
+
+// ErrGroupNotFound is returned by GetGroup when the directory reports the
+// group does not exist (an absent group), distinct from a read failure.
+var ErrGroupNotFound = errors.New("group not found")
 
 // GroupResolver resolves Google Workspace group memberships for a user email.
 type GroupResolver interface {
@@ -43,4 +48,20 @@ type GroupLister interface {
 
 	// GetGroup returns a single group's members by the group's email address.
 	GetGroup(ctx context.Context, groupEmail string) (*Group, error)
+
+	// GetAccount returns one account's standing. found=false means the
+	// directory returned not-found for the address; the caller decides what
+	// that means from whether the address is in a served domain.
+	GetAccount(ctx context.Context, email string) (Account, error)
+}
+
+// Account is one address's standing in this directory. Found=false is a
+// clean not-found (deleted/absent); the in-domain-vs-not distinction is the
+// caller's, from the served domains this resolver reports.
+type Account struct {
+	Email      string `json:"email"`
+	Found      bool   `json:"found"`
+	Live       bool   `json:"live"`
+	GivenName  string `json:"givenName,omitempty"`
+	FamilyName string `json:"familyName,omitempty"`
 }
