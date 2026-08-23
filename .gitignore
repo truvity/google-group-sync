@@ -17,3 +17,6 @@ coverage.out
 
 # Go
 vendor/
+
+# Local buf toolchain scratch
+.tmpbin/
