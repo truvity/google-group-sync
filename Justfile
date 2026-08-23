@@ -28,6 +28,21 @@ test-integration:
 lint:
     golangci-lint run ./...
 
+# Render the chart with the shipped values plus a fully-featured set;
+# prove the schema rejects an unknown key (values.schema.json is the
+# contract — a typo must fail the render, not be silently ignored).
+chart-lint:
+    helm lint charts/google-group-sync
+    helm template google-group-sync charts/google-group-sync >/dev/null
+    helm template google-group-sync charts/google-group-sync \
+        --set replicaCount=1 \
+        --set env.GOOGLE_ADMIN_EMAIL=admin@example.com \
+        --set secrets.saKeySecretName=example-sa-key \
+        --set ciliumNetworkPolicy.enabled=true \
+        --set rbac.enabled=true \
+        --set httpRoute.enabled=true >/dev/null
+    ! helm template google-group-sync charts/google-group-sync --set bogusKey=1 >/dev/null 2>&1
+
 # Run Go vulnerability check
 vuln:
     govulncheck ./...
@@ -40,8 +55,8 @@ tidy:
 clean:
     rm -rf bin/ dist/ coverage.out
 
-# Run all checks (build + test + lint + vuln)
-check: build test lint vuln
+# Run all checks (build + test + lint + chart-lint + vuln)
+check: build test lint chart-lint vuln
 
 # Build a snapshot release locally (no push, no tag)
 snapshot:
