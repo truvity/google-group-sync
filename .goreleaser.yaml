@@ -5,7 +5,7 @@ version: 2
 builds:
   # K8s/local binary (used standalone or as K8s sidecar).
   - id: google-group-sync
-    main: ./cmd/google-group-sync
+    main: ./cmd/sync
     binary: google-group-sync
     env:
       - CGO_ENABLED=0
@@ -86,7 +86,7 @@ kos:
     base_image: gcr.io/distroless/static:nonroot
     sbom: none
     labels:
-      org.opencontainers.image.title: google-group-sync
+      org.opencontainers.image.title: sync
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.source: https://github.com/truvity/google-group-sync
 
