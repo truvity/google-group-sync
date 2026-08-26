@@ -1,7 +1,7 @@
 replicaCount: 2
 
 image:
-  repository: ghcr.io/truvity/google-group-sync
+  repository: ghcr.io/truvity/google-group-sync/sync
   tag: ""  # defaults to chart appVersion
   pullPolicy: IfNotPresent
 
@@ -41,6 +41,11 @@ resources:
 serviceAccount:
   create: true
   name: ""
+  # Extra ServiceAccount annotations. The workload needs no cloud access
+  # today, but the passthrough is the estate convention (INF-584 P1/P3):
+  # an operator attaching IRSA or any other annotation must not need a
+  # fork. Example: eks.amazonaws.com/role-arn: arn:aws:iam::123:role/x
+  annotations: {}
 
 # PodDisruptionBudget — enabled automatically when replicaCount >= 2.
 podDisruptionBudget:

@@ -14,7 +14,7 @@ fmt:
 
 # Build the binary
 build: fmt
-    go build -o bin/bootstrap ./cmd/google-group-sync/
+    go build -o bin/bootstrap ./cmd/sync/
 
 # Run tests
 test:
